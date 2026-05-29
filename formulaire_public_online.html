@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Dépôt Rapport PFE — ENSA Safi</title>
+<style>
+  :root {
+    --blue:    #1a56a0;
+    --blue2:   #2563eb;
+    --green:   #16a34a;
+    --red:     #dc2626;
+    --bg:      #f0f4f8;
+    --card:    #ffffff;
+    --border:  #e2e8f0;
+    --text:    #0f172a;
+    --sub:     #64748b;
+    --input-border: #cbd5e1;
+    --radius:  14px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 0 0 60px;
+  }
+
+  .header {
+    background: linear-gradient(135deg, #0f2557, #1a56a0 55%, #2563eb);
+    color: white;
+    padding: 1.4rem 1.6rem 1.2rem;
+    text-align: center;
+    position: relative;
+  }
+  .header-logo { font-size: 2.2rem; margin-bottom: 6px; }
+  .header h1 {
+    font-size: clamp(1rem, 3.5vw, 1.3rem);
+    font-weight: 700; margin-bottom: 4px;
+  }
+  .header p { font-size: 0.82rem; opacity: 0.8; }
+  .header-badge {
+    display: inline-block;
+    background: rgba(255,255,255,0.18);
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 20px;
+    padding: 3px 14px;
+    font-size: 0.72rem; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    margin-top: 8px;
+  }
+
+  .steps-wrap {
+    background: white;
+    border-bottom: 1px solid var(--border);
+    padding: 1rem 1.6rem;
+  }
+  .steps {
+    display: flex; align-items: center; justify-content: center;
+    max-width: 480px; margin: 0 auto; gap: 0;
+  }
+  .step-item {
+    display: flex; flex-direction: column;
+    align-items: center; flex: 1; position: relative;
+  }
+  .step-item:not(:last-child)::after {
+    content: ''; position: absolute;
+    top: 16px; left: 55%; width: 90%; height: 2px;
+    background: var(--border); z-index: 0;
+  }
+  .step-item.done:not(:last-child)::after { background: var(--blue); }
+  .step-circle {
+    width: 32px; height: 32px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.78rem; font-weight: 700;
+    background: var(--border); color: var(--sub);
+    position: relative; z-index: 1; transition: all .3s;
+  }
+  .step-item.active .step-circle {
+    background: var(--blue); color: white;
+    box-shadow: 0 0 0 4px rgba(26,86,160,0.15);
+  }
+  .step-item.done .step-circle { background: var(--green); color: white; }
+  .step-label {
+    font-size: 0.65rem; font-weight: 600;
+    color: var(--sub); margin-top: 4px;
+    text-transform: uppercase; letter-spacing: 0.05em; text-align: center;
+  }
+  .step-item.active .step-label { color: var(--blue); }
+  .step-item.done .step-label { color: var(--green); }
+
+  .container { max-width: 640px; margin: 0 auto; padding: 1.4rem 1rem; }
+
+  .card {
+    background: var(--card);
+    border-radius: var(--radius); border: 1px solid var(--border);
+    padding: 1.6rem; margin-bottom: 1.2rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+  .card-title {
+    font-size: 0.72rem; font-weight: 700;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--blue); margin-bottom: 1.2rem;
+    padding-bottom: 0.6rem; border-bottom: 2px solid #e8f0fb;
+    display: flex; align-items: center; gap: 8px;
+  }
+
+  .row { display: flex; gap: 14px; }
+  .row > .field { flex: 1; }
+  @media (max-width: 480px) { .row { flex-direction: column; gap: 0; } }
+
+  .field { margin-bottom: 1rem; }
+  label {
+    display: block; font-size: 0.82rem; font-weight: 600;
+    color: #374151; margin-bottom: 5px;
+  }
+  label .req { color: var(--red); margin-left: 2px; }
+  label .opt { color: var(--sub); font-weight: 400; font-size: 0.75rem; }
+
+  input[type=text], input[type=email], select, textarea {
+    width: 100%; padding: 10px 13px;
+    border: 1.5px solid var(--input-border); border-radius: 9px;
+    font-size: 0.9rem; font-family: inherit;
+    color: var(--text); background: #fafbfd;
+    transition: border-color .2s, box-shadow .2s;
+    outline: none; appearance: none;
+  }
+  input:focus, select:focus, textarea:focus {
+    border-color: var(--blue);
+    box-shadow: 0 0 0 3px rgba(26,86,160,0.1);
+    background: white;
+  }
+  textarea { resize: vertical; min-height: 80px; }
+  select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2364748b' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 12px center; padding-right: 36px;
+  }
+
+  .hint { font-size: 0.74rem; color: var(--sub); margin-top: 4px; }
+  .hint b { color: var(--blue); }
+
+  .field-error { font-size: 0.75rem; color: var(--red); margin-top: 4px; display: none; }
+  .field.invalid input, .field.invalid select, .field.invalid textarea {
+    border-color: var(--red) !important;
+  }
+  .field.invalid .field-error { display: block; }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: 8px; padding: 12px 28px; border-radius: 10px;
+    font-size: 0.92rem; font-weight: 600; font-family: inherit;
+    border: none; cursor: pointer; transition: all .2s; text-decoration: none;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--blue), var(--blue2));
+    color: white; box-shadow: 0 3px 12px rgba(26,86,160,0.3); width: 100%;
+  }
+  .btn-primary:hover { opacity: 0.93; transform: translateY(-1px); }
+  .btn-primary:active { transform: translateY(0); }
+  .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+  .btn-secondary { background: white; color: var(--blue); border: 1.5px solid var(--blue); }
+  .btn-secondary:hover { background: #f0f6ff; }
+
+  .nav-btns { display: flex; gap: 10px; margin-top: 1.4rem; }
+  .nav-btns .btn { flex: 1; }
+
+  .error-banner {
+    background: #fef2f2; border: 1.5px solid #fca5a5;
+    border-radius: 10px; padding: 12px 16px; margin-bottom: 1rem;
+    font-size: 0.85rem; color: var(--red); display: none;
+  }
+  .error-banner ul { margin: 6px 0 0 16px; }
+
+  .success-screen { display: none; text-align: center; padding: 2rem 1rem; }
+  .success-icon { font-size: 3.5rem; margin-bottom: 1rem; }
+  .success-screen h2 { font-size: 1.3rem; font-weight: 700; color: var(--green); margin-bottom: 8px; }
+  .success-screen p { color: var(--sub); font-size: 0.9rem; }
+  .recu-box {
+    background: #f0fdf4; border: 1.5px solid #86efac;
+    border-radius: 12px; padding: 1.2rem 1.4rem;
+    text-align: left; margin: 1.4rem 0;
+  }
+  .recu-row {
+    display: flex; justify-content: space-between;
+    align-items: baseline; padding: 5px 0;
+    border-bottom: 1px solid #dcfce7; font-size: 0.85rem;
+  }
+  .recu-row:last-child { border-bottom: none; }
+  .recu-key { color: var(--sub); font-weight: 500; }
+  .recu-val { color: #166534; font-weight: 600; text-align: right; max-width: 65%; }
+  .num-badge {
+    display: inline-block;
+    background: linear-gradient(135deg, var(--blue), var(--blue2));
+    color: white; padding: 4px 18px; border-radius: 20px;
+    font-weight: 700; font-size: 1rem; margin: 6px 0 16px;
+  }
+
+  .spinner {
+    width: 20px; height: 20px;
+    border: 2px solid rgba(255,255,255,0.4);
+    border-top-color: white; border-radius: 50%;
+    animation: spin .6s linear infinite; display: none;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .info-note {
+    background: #eff6ff; border: 1px solid #bfdbfe;
+    border-radius: 10px; padding: 10px 14px;
+    font-size: 0.8rem; color: #1e40af; margin-bottom: 1.2rem;
+    display: flex; gap: 8px; align-items: flex-start;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-logo">🎓</div>
+  <h1>Dépôt Rapport PFE — ENSA Safi</h1>
+  <p>École Nationale des Sciences Appliquées · Université Cadi Ayyad</p>
+  <div class="header-badge">Formulaire Étudiant</div>
+</div>
+
+<div class="steps-wrap">
+  <div class="steps">
+    <div class="step-item active" id="s1">
+      <div class="step-circle">1</div>
+      <div class="step-label">Identité</div>
+    </div>
+    <div class="step-item" id="s2">
+      <div class="step-circle">2</div>
+      <div class="step-label">Rapport</div>
+    </div>
+    <div class="step-item" id="s3">
+      <div class="step-circle">3</div>
+      <div class="step-label">Confirmation</div>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+
+  <div class="error-banner" id="errorBanner">
+    <b>⚠️ Veuillez corriger les erreurs suivantes :</b>
+    <ul id="errorList"></ul>
+  </div>
+
+  <!-- ÉTAPE 1 : Identité -->
+  <div id="page1">
+    <div class="card">
+      <div class="card-title">👤 Informations personnelles</div>
+      <div class="row">
+        <div class="field" id="f-nom">
+          <label>Nom <span class="req">*</span></label>
+          <input type="text" id="nom" placeholder="AMRANI" autocomplete="family-name"/>
+          <div class="field-error">Le nom est obligatoire.</div>
+        </div>
+        <div class="field" id="f-prenom">
+          <label>Prénom <span class="req">*</span></label>
+          <input type="text" id="prenom" placeholder="Mohamed" autocomplete="given-name"/>
+          <div class="field-error">Le prénom est obligatoire.</div>
+        </div>
+      </div>
+      <div class="field" id="f-email">
+        <label>Email institutionnel <span class="req">*</span></label>
+        <input type="email" id="email" placeholder="m.amrani@uca.ac.ma" autocomplete="email"/>
+        <div class="hint">Format obligatoire : <b>...@uca.ac.ma</b></div>
+        <div class="field-error">L'email doit se terminer par @uca.ac.ma.</div>
+      </div>
+      <div class="row">
+        <div class="field" id="f-filiere">
+          <label>Filière <span class="req">*</span></label>
+          <select id="filiere">
+            <option value="">— Choisir —</option>
+            <option>GINDUS</option>
+            <option>GPMA</option>
+            <option>GIIA</option>
+            <option>GTR</option>
+            <option>GATE</option>
+            <option>GMSI</option>
+          </select>
+          <div class="field-error">Veuillez sélectionner une filière.</div>
+        </div>
+        <div class="field" id="f-annee">
+          <label>Année universitaire <span class="req">*</span></label>
+          <select id="annee">
+            <option value="">— Choisir —</option>
+          </select>
+          <div class="field-error">Veuillez sélectionner une année.</div>
+        </div>
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="goStep2()">Continuer &rarr;</button>
+  </div>
+
+  <!-- ÉTAPE 2 : Rapport -->
+  <div id="page2" style="display:none">
+    <div class="info-note">
+      ℹ️ Le rapport PDF sera déposé physiquement à la bibliothèque. Remplissez ici les informations du rapport.
+    </div>
+    <div class="card">
+      <div class="card-title">📄 Informations du rapport</div>
+      <div class="field" id="f-intitule">
+        <label>Intitulé du rapport <span class="req">*</span></label>
+        <textarea id="intitule" placeholder="Ex : Développement d'une application de gestion des stocks pour OCP Group…"></textarea>
+        <div class="field-error">L'intitulé est obligatoire.</div>
+      </div>
+      <div class="row">
+        <div class="field" id="f-encadrant">
+          <label>Encadrant <span class="req">*</span></label>
+          <input type="text" id="encadrant" placeholder="Pr. BENALI Ahmed"/>
+          <div class="field-error">L'encadrant est obligatoire.</div>
+        </div>
+        <div class="field" id="f-co_encadrant">
+          <label>Co-encadrant <span class="opt">(optionnel)</span></label>
+          <input type="text" id="co_encadrant" placeholder="Optionnel"/>
+        </div>
+      </div>
+      <div class="field" id="f-lieu">
+        <label>Lieu de stage <span class="req">*</span></label>
+        <input type="text" id="lieu_stage" placeholder="OCP Group, Marrakech"/>
+        <div class="field-error">Le lieu de stage est obligatoire.</div>
+      </div>
+    </div>
+    <div class="nav-btns">
+      <button class="btn btn-secondary" onclick="goStep1()">&larr; Retour</button>
+      <button class="btn btn-primary" id="submitBtn" onclick="soumettre()">
+        <span id="submitText">✅ Soumettre le formulaire</span>
+        <div class="spinner" id="spinner"></div>
+      </button>
+    </div>
+  </div>
+
+  <!-- ÉTAPE 3 : Succès -->
+  <div id="page3" class="success-screen">
+    <div class="success-icon">🎉</div>
+    <h2>Formulaire soumis avec succès !</h2>
+    <p>Votre dépôt a bien été enregistré. Veuillez conserver votre numéro d'ordre.</p>
+    <div class="recu-box">
+      <div style="text-align:center; margin-bottom:8px;">
+        <div style="font-size:0.72rem;font-weight:700;color:#15803d;letter-spacing:0.1em;text-transform:uppercase;">Numéro d'ordre</div>
+        <div class="num-badge" id="numOrdre">—</div>
+      </div>
+      <div class="recu-row"><span class="recu-key">Étudiant</span><span class="recu-val" id="r-nom">—</span></div>
+      <div class="recu-row"><span class="recu-key">Email</span><span class="recu-val" id="r-email">—</span></div>
+      <div class="recu-row"><span class="recu-key">Filière</span><span class="recu-val" id="r-filiere">—</span></div>
+      <div class="recu-row"><span class="recu-key">Année</span><span class="recu-val" id="r-annee">—</span></div>
+      <div class="recu-row"><span class="recu-key">Date de soumission</span><span class="recu-val" id="r-date">—</span></div>
+    </div>
+    <p style="font-size:0.82rem; color:#64748b; margin-top:8px;">
+      📚 N'oubliez pas de déposer votre rapport PDF physique à la bibliothèque.
+    </p>
+    <button class="btn btn-secondary" style="margin-top:1.2rem;width:100%;" onclick="recommencer()">
+      Nouveau dépôt
+    </button>
+  </div>
+
+</div><!-- /container -->
+
+<script>
+// ══════════════════════════════════════════════════════
+//  ⚙️  CONFIGURATION — À modifier après déploiement
+// ══════════════════════════════════════════════════════
+const APPS_SCRIPT_URL = "VOTRE_URL_APPS_SCRIPT_ICI";
+// Exemple : "https://script.google.com/macros/s/AKfycbx.../exec"
+// ══════════════════════════════════════════════════════
+
+// Remplir les années
+(function() {
+  const sel = document.getElementById('annee');
+  const now = new Date();
+  const endYear = now.getMonth() >= 5 ? now.getFullYear() + 1 : now.getFullYear();
+  for (let y = endYear - 1; y >= 2020; y--) {
+    const opt = document.createElement('option');
+    opt.value = `${y}-${y+1}`;
+    opt.textContent = `${y}-${y+1}`;
+    sel.appendChild(opt);
+  }
+})();
+
+function setStep(n) {
+  ['page1','page2','page3'].forEach((id, i) => {
+    document.getElementById(id).style.display = (i + 1 === n) ? 'block' : 'none';
+    if (id === 'page3') document.getElementById(id).style.display = (n === 3) ? 'block' : 'none';
+  });
+  [1,2,3].forEach(i => {
+    const el = document.getElementById('s' + i);
+    el.classList.remove('active','done');
+    if (i < n)  el.classList.add('done');
+    if (i === n) el.classList.add('active');
+  });
+  clearErrors();
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+function goStep1() { setStep(1); }
+function goStep2() { if (validateStep1()) setStep(2); }
+
+function clearErrors() {
+  document.getElementById('errorBanner').style.display = 'none';
+  document.querySelectorAll('.field.invalid').forEach(f => f.classList.remove('invalid'));
+}
+
+function showErrors(errors) {
+  const banner = document.getElementById('errorBanner');
+  const list   = document.getElementById('errorList');
+  banner.style.display = 'block';
+  list.innerHTML = errors.map(e => `<li>${e}</li>`).join('');
+  banner.scrollIntoView({behavior:'smooth', block:'center'});
+}
+
+function markInvalid(fieldId) {
+  document.getElementById(fieldId).classList.add('invalid');
+}
+
+function validateStep1() {
+  clearErrors();
+  const errors = [];
+  const nom     = document.getElementById('nom').value.trim();
+  const prenom  = document.getElementById('prenom').value.trim();
+  const email   = document.getElementById('email').value.trim().toLowerCase();
+  const filiere = document.getElementById('filiere').value;
+  const annee   = document.getElementById('annee').value;
+
+  if (!nom)    { errors.push('Le nom est obligatoire.');            markInvalid('f-nom'); }
+  if (!prenom) { errors.push('Le prénom est obligatoire.');         markInvalid('f-prenom'); }
+  if (!email || !email.endsWith('@uca.ac.ma')) {
+    errors.push("L'email doit se terminer par @uca.ac.ma.");        markInvalid('f-email');
+  }
+  if (!filiere) { errors.push('Veuillez choisir une filière.');     markInvalid('f-filiere'); }
+  if (!annee)   { errors.push("Veuillez choisir l'année.");         markInvalid('f-annee'); }
+
+  if (errors.length) { showErrors(errors); return false; }
+  return true;
+}
+
+function validateStep2() {
+  clearErrors();
+  const errors = [];
+  const intitule  = document.getElementById('intitule').value.trim();
+  const encadrant = document.getElementById('encadrant').value.trim();
+  const lieu      = document.getElementById('lieu_stage').value.trim();
+
+  if (!intitule)  { errors.push("L'intitulé du rapport est obligatoire.");  markInvalid('f-intitule'); }
+  if (!encadrant) { errors.push("L'encadrant est obligatoire.");             markInvalid('f-encadrant'); }
+  if (!lieu)      { errors.push("Le lieu de stage est obligatoire.");        markInvalid('f-lieu'); }
+
+  if (errors.length) { showErrors(errors); return false; }
+  return true;
+}
+
+async function soumettre() {
+  if (!validateStep2()) return;
+
+  if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL === "VOTRE_URL_APPS_SCRIPT_ICI") {
+    showErrors(["⚙️ Configuration manquante : veuillez contacter l'administrateur."]);
+    return;
+  }
+
+  const btn     = document.getElementById('submitBtn');
+  const txt     = document.getElementById('submitText');
+  const spinner = document.getElementById('spinner');
+
+  btn.disabled = true;
+  txt.style.display = 'none';
+  spinner.style.display = 'block';
+
+  const payload = {
+    nom:              document.getElementById('nom').value.trim().toUpperCase(),
+    prenom:           document.getElementById('prenom').value.trim(),
+    email:            document.getElementById('email').value.trim().toLowerCase(),
+    filiere:          document.getElementById('filiere').value,
+    annee:            document.getElementById('annee').value,
+    intitule_rapport: document.getElementById('intitule').value.trim(),
+    encadrant:        document.getElementById('encadrant').value.trim(),
+    co_encadrant:     document.getElementById('co_encadrant').value.trim(),
+    lieu_stage:       document.getElementById('lieu_stage').value.trim(),
+  };
+
+  try {
+    // Google Apps Script nécessite mode "no-cors" pour POST
+    // On utilise une technique compatible : fetch avec redirect follow
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload),
+      redirect: 'follow'
+    });
+
+    const data = await res.json();
+
+    if (data.ok) {
+      document.getElementById('numOrdre').textContent  = data.num_ordre || '—';
+      document.getElementById('r-nom').textContent     = payload.nom + ' ' + payload.prenom;
+      document.getElementById('r-email').textContent   = payload.email;
+      document.getElementById('r-filiere').textContent = payload.filiere;
+      document.getElementById('r-annee').textContent   = payload.annee;
+      document.getElementById('r-date').textContent    = data.date_soumission || new Date().toLocaleString('fr-FR');
+      setStep(3);
+    } else {
+      showErrors(data.errors || ['Erreur inconnue. Veuillez réessayer.']);
+    }
+  } catch (err) {
+    showErrors(["Impossible de joindre le serveur. Vérifiez votre connexion ou contactez la secrétariat."]);
+  } finally {
+    btn.disabled = false;
+    txt.style.display = 'inline';
+    spinner.style.display = 'none';
+  }
+}
+
+function recommencer() {
+  ['nom','prenom','email','intitule','encadrant','co_encadrant','lieu_stage'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  document.getElementById('filiere').selectedIndex = 0;
+  document.getElementById('annee').selectedIndex   = 0;
+  setStep(1);
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  if (document.getElementById('page1').style.display !== 'none') goStep2();
+});
+</script>
+</body>
+</html>
