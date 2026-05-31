@@ -1,6 +1,11 @@
 import streamlit as st
 import pandas as pd
 import os
+try:
+    from streamlit_autorefresh import st_autorefresh
+    HAS_AUTOREFRESH = True
+except ImportError:
+    HAS_AUTOREFRESH = False
 import hashlib
 from utils.data_manager import (
   load_data, save_data, get_pdf_path,
@@ -149,7 +154,10 @@ def show_dashboard_page():
 
   st.markdown("")
 
-  # ── Load data (Google Sheets si configuré, sinon CSV local) ─────────────
+  # ── Load data ────────────────────────────────────────────────────────────
+  # ── Auto-refresh toutes les 30 secondes sans déconnecter ──────────────
+  if HAS_AUTOREFRESH:
+    st_autorefresh(interval=30000, key="data_refresh")
   df = load_data()
 
   # ── KPI METRICS ─────────────────────────────────────────────────────────
