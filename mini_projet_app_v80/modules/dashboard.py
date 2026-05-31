@@ -389,23 +389,39 @@ def show_dashboard_page():
                 st.markdown('<div style="text-align:center;font-size:0.75rem;color:#9ca3af;padding:8px 0;">Non trouvé</div>', unsafe_allow_html=True)
 
             # ── Prévisualisation inline (sous la ligne) ──────────────────
-            if os.path.exists(pdf_path) and st.session_state.get(f"show_preview_{num_ordre_key}"):
+            show_prev = st.session_state.get(f"show_preview_{num_ordre_key}")
+            if show_prev:
+              from utils.data_manager import get_pdf_url, _use_supabase
               import base64 as _b64
-              with open(pdf_path, "rb") as _pf2:
-                pdf_b64 = _b64.b64encode(_pf2.read()).decode()
               nom_etud = f"{row['nom']} {row['prenom']}"
-              st.markdown(
-                f'''<div style="background:{row_bg};padding:10px 14px;border-bottom:2px solid #2563eb;margin-bottom:4px;">
-                <div style="font-size:0.78rem;font-weight:600;color:#2563eb;margin-bottom:6px;">
-                  Rapport de {nom_etud} — {row["filiere"]} {row["annee"]}
-                </div>
-                <iframe src="data:application/pdf;base64,{pdf_b64}"
-                  width="100%" height="600px"
-                  style="border:1.5px solid #cbd5e1;border-radius:8px;background:#fff;">
-                </iframe>
-                </div>''',
-                unsafe_allow_html=True
-              )
+              pdf_filename = str(row.get('pdf_filename', ''))
+              pdf_src = None
+
+              if _use_supabase() and pdf_filename:
+                pdf_src = get_pdf_url(pdf_filename)
+              elif os.path.exists(pdf_path):
+                with open(pdf_path, "rb") as _pf2:
+                  pdf_b64 = _b64.b64encode(_pf2.read()).decode()
+                pdf_src = f"data:application/pdf;base64,{pdf_b64}"
+
+              if pdf_src:
+                st.markdown(
+                  f'''<div style="background:{row_bg};padding:10px 14px;border-bottom:2px solid #2563eb;margin-bottom:4px;">
+                  <div style="font-size:0.78rem;font-weight:600;color:#2563eb;margin-bottom:6px;">
+                    Rapport de {nom_etud} — {row["filiere"]} {row["annee"]}
+                  </div>
+                  <iframe src="https://mozilla.github.io/pdf.js/web/viewer.html?file={pdf_src}"
+                    width="100%" height="650px"
+                    style="border:1.5px solid #cbd5e1;border-radius:8px;background:#fff;">
+                  </iframe>
+                  <p style="font-size:0.75rem;color:#64748b;margin-top:6px;">
+                    Si le PDF ne s'affiche pas, utilisez le bouton ⬇ PDF pour le télécharger.
+                  </p>
+                  </div>''',
+                  unsafe_allow_html=True
+                )
+              else:
+                st.info("PDF non disponible pour cet étudiant.")
 
   # =====================================================================
   # TAB 2 : IMPORT / EXPORT
