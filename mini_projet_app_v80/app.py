@@ -76,6 +76,9 @@ else:
     /* File uploader */
     [data-testid="stFileUploaderDropzone"] { background: #f8fafc !important; border-color: #cbd5e1 !important; }
     [data-testid="stFileUploaderDropzone"] * { color: #374151 !important; }
+    [data-testid="stFileUploaderDropzone"] button { background: #1d4ed8 !important; color: white !important; border: none !important; }
+    [data-testid="stFileUploaderDropzone"] button p,
+    [data-testid="stFileUploaderDropzone"] button span { color: white !important; -webkit-text-fill-color: white !important; }
 
     /* Boutons default : fond blanc, texte noir */
     .stButton > button {
