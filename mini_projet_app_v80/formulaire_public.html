@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Dépôt Rapport PFE — ENSA Safi</title>
+<style>
+  :root {
+    --blue:    #1a56a0;
+    --blue2:   #2563eb;
+    --green:   #16a34a;
+    --red:     #dc2626;
+    --bg:      #f0f4f8;
+    --card:    #ffffff;
+    --border:  #e2e8f0;
+    --text:    #0f172a;
+    --sub:     #64748b;
+    --input-border: #cbd5e1;
+    --radius:  14px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; padding: 0 0 60px; }
+
+  /* Header */
+  .header { background: linear-gradient(135deg, #0f2557, #1a56a0 55%, #2563eb); color: white; padding: 1.4rem 1.6rem 1.2rem; text-align: center; }
+  .header-logo { font-size: 2.2rem; margin-bottom: 6px; }
+  .header h1 { font-size: clamp(1rem, 3.5vw, 1.3rem); font-weight: 700; margin-bottom: 4px; }
+  .header p  { font-size: 0.82rem; opacity: 0.8; }
+  .header-badge { display: inline-block; background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.3); border-radius: 20px; padding: 3px 14px; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; margin-top: 8px; }
+
+  /* Steps */
+  .steps-wrap { background: white; border-bottom: 1px solid var(--border); padding: 1rem 1.6rem; }
+  .steps { display: flex; align-items: center; justify-content: center; max-width: 520px; margin: 0 auto; }
+  .step-item { display: flex; flex-direction: column; align-items: center; flex: 1; position: relative; }
+  .step-item:not(:last-child)::after { content: ''; position: absolute; top: 16px; left: 55%; width: 90%; height: 2px; background: var(--border); z-index: 0; }
+  .step-item.done:not(:last-child)::after { background: var(--blue); }
+  .step-circle { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.78rem; font-weight: 700; background: var(--border); color: var(--sub); position: relative; z-index: 1; transition: all .3s; }
+  .step-item.active .step-circle { background: var(--blue); color: white; box-shadow: 0 0 0 4px rgba(26,86,160,0.15); }
+  .step-item.done  .step-circle  { background: var(--green); color: white; }
+  .step-label { font-size: 0.65rem; font-weight: 600; color: var(--sub); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.05em; text-align: center; }
+  .step-item.active .step-label { color: var(--blue); }
+  .step-item.done  .step-label  { color: var(--green); }
+
+  /* Container & Card */
+  .container { max-width: 640px; margin: 0 auto; padding: 1.4rem 1rem; }
+  .card { background: var(--card); border-radius: var(--radius); border: 1px solid var(--border); padding: 1.6rem; margin-bottom: 1.2rem; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .card-title { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--blue); margin-bottom: 1.2rem; padding-bottom: 0.6rem; border-bottom: 2px solid #e8f0fb; display: flex; align-items: center; gap: 8px; }
+
+  /* Form */
+  .row { display: flex; gap: 14px; }
+  .row > .field { flex: 1; }
+  @media (max-width: 480px) { .row { flex-direction: column; gap: 0; } }
+  .field { margin-bottom: 1rem; }
+  label { display: block; font-size: 0.82rem; font-weight: 600; color: #374151; margin-bottom: 5px; }
+  label .req { color: var(--red); margin-left: 2px; }
+  label .opt { color: var(--sub); font-weight: 400; font-size: 0.75rem; }
+  input[type=text], input[type=email], select, textarea { width: 100%; padding: 10px 13px; border: 1.5px solid var(--input-border); border-radius: 9px; font-size: 0.9rem; font-family: inherit; color: var(--text); background: #fafbfd; transition: border-color .2s, box-shadow .2s; outline: none; appearance: none; }
+  input:focus, select:focus, textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(26,86,160,0.1); background: white; }
+  textarea { resize: vertical; min-height: 80px; }
+  select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2364748b' d='M1 1l5 5 5-5'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 36px; }
+  .hint { font-size: 0.74rem; color: var(--sub); margin-top: 4px; }
+  .hint b { color: var(--blue); }
+  .field-error { font-size: 0.75rem; color: var(--red); margin-top: 4px; display: none; }
+  .field.invalid input, .field.invalid select, .field.invalid textarea { border-color: var(--red) !important; }
+  .field.invalid .field-error { display: block; }
+
+  /* Buttons */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 28px; border-radius: 10px; font-size: 0.92rem; font-weight: 600; font-family: inherit; border: none; cursor: pointer; transition: all .2s; text-decoration: none; }
+  .btn-primary { background: linear-gradient(135deg, var(--blue), var(--blue2)); color: white; box-shadow: 0 3px 12px rgba(26,86,160,0.3); width: 100%; }
+  .btn-primary:hover { opacity: 0.93; transform: translateY(-1px); }
+  .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+  .btn-secondary { background: white; color: var(--blue); border: 1.5px solid var(--blue); }
+  .btn-secondary:hover { background: #f0f6ff; }
+  .nav-btns { display: flex; gap: 10px; margin-top: 1.4rem; }
+  .nav-btns .btn { flex: 1; }
+
+  /* Error banner */
+  .error-banner { background: #fef2f2; border: 1.5px solid #fca5a5; border-radius: 10px; padding: 12px 16px; margin-bottom: 1rem; font-size: 0.85rem; color: var(--red); display: none; }
+  .error-banner ul { margin: 6px 0 0 16px; }
+
+  /* Success */
+  .success-screen { display: none; text-align: center; padding: 2rem 1rem; }
+  .success-icon { font-size: 3.5rem; margin-bottom: 1rem; }
+  .success-screen h2 { font-size: 1.3rem; font-weight: 700; color: var(--green); margin-bottom: 8px; }
+  .success-screen > p { color: var(--sub); font-size: 0.9rem; }
+  .recu-box { background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 12px; padding: 1.2rem 1.4rem; text-align: left; margin: 1.4rem 0; }
+  .recu-row { display: flex; justify-content: space-between; align-items: baseline; padding: 5px 0; border-bottom: 1px solid #dcfce7; font-size: 0.85rem; }
+  .recu-row:last-child { border-bottom: none; }
+  .recu-key { color: var(--sub); font-weight: 500; }
+  .recu-val { color: #166534; font-weight: 600; text-align: right; max-width: 65%; }
+  .num-badge { display: inline-block; background: linear-gradient(135deg, var(--blue), var(--blue2)); color: white; padding: 4px 18px; border-radius: 20px; font-weight: 700; font-size: 1rem; margin: 6px 0 16px; }
+
+  /* Spinner */
+  .spinner { width: 20px; height: 20px; border: 2px solid rgba(255,255,255,0.4); border-top-color: white; border-radius: 50%; animation: spin .6s linear infinite; display: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Notes */
+  .info-note { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 10px 14px; font-size: 0.8rem; color: #1e40af; margin-bottom: 1.2rem; display: flex; gap: 8px; align-items: flex-start; }
+  .warn-note { background: #fefce8; border: 1.5px solid #fde047; border-radius: 10px; padding: 10px 14px; font-size: 0.8rem; color: #713f12; margin-bottom: 1rem; display: flex; gap: 8px; align-items: flex-start; }
+
+  /* PDF Drop Zone */
+  .pdf-drop-zone { border: 2px dashed var(--input-border); border-radius: 12px; padding: 1.4rem 1rem; text-align: center; cursor: pointer; transition: all .25s; background: #fafbfd; position: relative; }
+  .pdf-drop-zone:hover, .pdf-drop-zone.dragover { border-color: var(--blue); background: #eff6ff; }
+  .pdf-drop-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .pdf-drop-icon { font-size: 2rem; margin-bottom: 6px; }
+  .pdf-drop-text { font-size: 0.85rem; color: var(--sub); }
+  .pdf-drop-text b { color: var(--blue); }
+
+  /* PDF Preview bar */
+  .pdf-preview-bar { display: none; margin-top: 10px; background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 10px; padding: 10px 14px; align-items: center; gap: 12px; }
+  .pdf-preview-bar.visible { display: flex; }
+  .pdf-file-icon { font-size: 1.5rem; flex-shrink: 0; }
+  .pdf-file-info { flex: 1; text-align: left; }
+  .pdf-file-name { font-size: 0.85rem; font-weight: 600; color: #166534; }
+  .pdf-file-size { font-size: 0.74rem; color: var(--sub); margin-top: 2px; }
+  .pdf-actions { display: flex; gap: 6px; align-items: center; }
+  .btn-small { padding: 6px 12px; border-radius: 8px; font-size: 0.78rem; font-weight: 600; border: none; cursor: pointer; font-family: inherit; transition: all .2s; }
+  .btn-preview { background: #eff6ff; color: var(--blue); border: 1.5px solid #bfdbfe; }
+  .btn-preview:hover { background: #dbeafe; }
+  .btn-remove { background: #fee2e2; color: #dc2626; }
+  .btn-remove:hover { background: #fecaca; }
+
+  /* Download buttons */
+  .dl-group { display: flex; flex-direction: column; gap: 10px; margin-top: 1.2rem; }
+  .btn-dl { padding: 13px 20px; border-radius: 10px; font-size: 0.92rem; font-weight: 600; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all .2s; font-family: inherit; width: 100%; }
+  .btn-dl:hover { opacity: 0.93; transform: translateY(-1px); }
+  .btn-dl:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+  .btn-dl-recu { background: linear-gradient(135deg, #15803d, #16a34a); color: white; box-shadow: 0 3px 12px rgba(22,163,74,0.3); }
+  .btn-dl-rapport { background: linear-gradient(135deg, #0f2557, #1a56a0); color: white; box-shadow: 0 3px 12px rgba(26,86,160,0.3); }
+
+  /* PDF Modal */
+  .pdf-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 9999; align-items: center; justify-content: center; }
+  .pdf-modal-overlay.open { display: flex; }
+  .pdf-modal { background: white; border-radius: 16px; width: min(95vw, 820px); height: min(92vh, 720px); display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+  .pdf-modal-header { background: linear-gradient(135deg,#0f2557,#1a56a0); color: white; padding: 14px 18px; display: flex; align-items: center; gap: 10px; }
+  .pdf-modal-title { flex: 1; font-weight: 700; font-size: 0.92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pdf-modal-close { background: rgba(255,255,255,0.2); border: none; color: white; border-radius: 8px; padding: 5px 12px; cursor: pointer; font-size: 1rem; }
+  .pdf-modal-close:hover { background: rgba(255,255,255,0.35); }
+  .pdf-modal iframe { flex: 1; border: none; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-logo">🎓</div>
+  <h1>Dépôt Rapport PFE — ENSA Safi</h1>
+  <p>École Nationale des Sciences Appliquées · Université Cadi Ayyad</p>
+  <div class="header-badge">Formulaire Étudiant</div>
+</div>
+
+<!-- Steps -->
+<div class="steps-wrap">
+  <div class="steps">
+    <div class="step-item active" id="s1"><div class="step-circle">1</div><div class="step-label">Identité</div></div>
+    <div class="step-item"        id="s2"><div class="step-circle">2</div><div class="step-label">Rapport</div></div>
+    <div class="step-item"        id="s3"><div class="step-circle">3</div><div class="step-label">Confirmation</div></div>
+  </div>
+</div>
+
+<div class="container">
+  <!-- Doublon banner -->
+  <div class="doublon-banner" id="doublonBanner" style="display:none;background:#fff7ed;border:2px solid #f97316;border-radius:12px;padding:14px 16px;margin-bottom:1rem;font-size:0.88rem;color:#7c2d12;">
+    <div style="display:flex;gap:10px;align-items:flex-start;">
+      <span style="font-size:1.4rem;flex-shrink:0;">🚫</span>
+      <div>
+        <div style="font-weight:700;font-size:0.95rem;margin-bottom:4px;">Dépôt déjà enregistré</div>
+        <div id="doublonMsg">—</div>
+        <div style="margin-top:8px;font-size:0.78rem;color:#9a3412;">Si vous pensez qu'il s'agit d'une erreur, contactez le secrétariat du département.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="error-banner" id="errorBanner">
+    <b>⚠️ Veuillez corriger les erreurs suivantes :</b>
+    <ul id="errorList"></ul>
+  </div>
+
+  <!-- ══ ÉTAPE 1 : Identité ══ -->
+  <div id="page1">
+    <div class="card">
+      <div class="card-title">👤 Informations personnelles</div>
+      <div class="row">
+        <div class="field" id="f-nom">
+          <label>Nom <span class="req">*</span></label>
+          <input type="text" id="nom" placeholder="AMRANI" autocomplete="family-name"/>
+          <div class="field-error">Le nom est obligatoire.</div>
+        </div>
+        <div class="field" id="f-prenom">
+          <label>Prénom <span class="req">*</span></label>
+          <input type="text" id="prenom" placeholder="Mohamed" autocomplete="given-name"/>
+          <div class="field-error">Le prénom est obligatoire.</div>
+        </div>
+      </div>
+      <div class="field" id="f-email">
+        <label>Email institutionnel <span class="req">*</span></label>
+        <input type="email" id="email" placeholder="m.amrani@uca.ac.ma" autocomplete="email"/>
+        <div class="hint">Format obligatoire : <b>...@uca.ac.ma</b></div>
+        <div class="field-error">L'email doit se terminer par @uca.ac.ma.</div>
+      </div>
+      <div class="row">
+        <div class="field" id="f-filiere">
+          <label>Filière <span class="req">*</span></label>
+          <select id="filiere">
+            <option value="">— Choisir —</option>
+            <option>GINDUS</option><option>GPMA</option><option>GIIA</option>
+            <option>GTR</option><option>GATE</option><option>GMSI</option>
+          </select>
+          <div class="field-error">Veuillez sélectionner une filière.</div>
+        </div>
+        <div class="field" id="f-annee">
+          <label>Année universitaire <span class="req">*</span></label>
+          <select id="annee"><option value="">— Choisir —</option></select>
+          <div class="field-error">Veuillez sélectionner une année.</div>
+        </div>
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="goStep2()">Continuer &rarr;</button>
+  </div>
+
+  <!-- ══ ÉTAPE 2 : Rapport + PDF ══ -->
+  <div id="page2" style="display:none">
+    <div class="info-note">
+      <span>ℹ️</span>
+      <span>Remplissez les informations de votre rapport PFE et <b>joignez votre fichier PDF</b> avant de soumettre.</span>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📄 Informations du rapport</div>
+      <div class="field" id="f-intitule">
+        <label>Intitulé du rapport <span class="req">*</span></label>
+        <textarea id="intitule" placeholder="Ex : Développement d'une application de gestion des stocks pour OCP Group…"></textarea>
+        <div class="field-error">L'intitulé est obligatoire.</div>
+      </div>
+      <div class="row">
+        <div class="field" id="f-encadrant">
+          <label>Encadrant <span class="req">*</span></label>
+          <input type="text" id="encadrant" placeholder="Pr. BENALI Ahmed"/>
+          <div class="field-error">L'encadrant est obligatoire.</div>
+        </div>
+        <div class="field" id="f-co_encadrant">
+          <label>Co-encadrant <span class="opt">(optionnel)</span></label>
+          <input type="text" id="co_encadrant" placeholder="Optionnel"/>
+        </div>
+      </div>
+      <div class="field" id="f-lieu">
+        <label>Lieu de stage <span class="req">*</span></label>
+        <input type="text" id="lieu_stage" placeholder="OCP Group, Marrakech"/>
+        <div class="field-error">Le lieu de stage est obligatoire.</div>
+      </div>
+    </div>
+
+    <!-- PDF Upload -->
+    <div class="card">
+      <div class="card-title">📎 Rapport PDF <span style="font-size:0.65rem;font-weight:400;color:var(--sub);text-transform:none;letter-spacing:0;margin-left:4px;">— joint avant soumission</span></div>
+
+      <div class="warn-note">
+        <span>📌</span>
+        <div>Joignez votre rapport ici pour qu'il soit <b>directement enregistré</b> dans la bibliothèque électronique lors de la soumission. Vous pourrez aussi le télécharger depuis votre reçu.</div>
+      </div>
+
+      <!-- Drop zone -->
+      <div class="pdf-drop-zone" id="pdfDropZone">
+        <input type="file" id="pdfFile" accept="application/pdf" onchange="onPdfChosen(this)"/>
+        <div class="pdf-drop-icon">📄</div>
+        <div class="pdf-drop-text"><b>Cliquez ici ou glissez-déposez</b> votre fichier PDF<br/><span style="font-size:0.74rem;">Taille max. : 20 Mo</span></div>
+      </div>
+
+      <!-- Preview bar (shown after file chosen) -->
+      <div class="pdf-preview-bar" id="pdfPreviewBar">
+        <div class="pdf-file-icon">📄</div>
+        <div class="pdf-file-info">
+          <div class="pdf-file-name" id="pdfFileName">—</div>
+          <div class="pdf-file-size" id="pdfFileSize">—</div>
+        </div>
+        <div class="pdf-actions">
+          <button class="btn-small btn-preview" onclick="previewSelectedPdf()">👁 Aperçu</button>
+          <button class="btn-small btn-remove"  onclick="clearPdf()">✕ Retirer</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav-btns">
+      <button class="btn btn-secondary" onclick="goStep1()">&larr; Retour</button>
+      <button class="btn btn-primary" id="submitBtn" onclick="soumettre()">
+        <span id="submitText">✅ Soumettre le formulaire</span>
+        <div class="spinner" id="spinner"></div>
+      </button>
+    </div>
+  </div>
+
+  <!-- ══ ÉTAPE 3 : Succès + Téléchargements ══ -->
+  <div id="page3" class="success-screen">
+    <div class="success-icon">🎉</div>
+    <h2>Formulaire soumis avec succès !</h2>
+    <p>Votre dépôt a bien été enregistré. Veuillez conserver votre numéro d'ordre.</p>
+
+    <div class="recu-box">
+      <div style="text-align:center;margin-bottom:8px;">
+        <div style="font-size:0.72rem;font-weight:700;color:#15803d;letter-spacing:0.1em;text-transform:uppercase;">Numéro d'ordre</div>
+        <div class="num-badge" id="numOrdre">—</div>
+      </div>
+      <div class="recu-row"><span class="recu-key">Étudiant</span>              <span class="recu-val" id="r-nom">—</span></div>
+      <div class="recu-row"><span class="recu-key">Email</span>                 <span class="recu-val" id="r-email">—</span></div>
+      <div class="recu-row"><span class="recu-key">Filière</span>               <span class="recu-val" id="r-filiere">—</span></div>
+      <div class="recu-row"><span class="recu-key">Année</span>                 <span class="recu-val" id="r-annee">—</span></div>
+      <div class="recu-row"><span class="recu-key">Date de soumission</span>   <span class="recu-val" id="r-date">—</span></div>
+      <div class="recu-row" id="r-pdf-row" style="display:none">
+        <span class="recu-key">Rapport PDF</span>
+        <span class="recu-val" style="color:#16a34a;">✅ Déposé dans la bibliothèque</span>
+      </div>
+    </div>
+
+    <!-- Boutons de téléchargement -->
+    <div class="dl-group">
+      <button class="btn-dl btn-dl-recu" id="btnDlRecu" onclick="downloadRecu()">
+        📥 Télécharger mon reçu de dépôt (PDF officiel)
+      </button>
+      <button class="btn-dl btn-dl-rapport" id="btnDlRapport" style="display:none" onclick="downloadMonRapport()">
+        📄 Télécharger mon rapport PDF déposé
+      </button>
+    </div>
+
+    <p style="font-size:0.78rem;color:#64748b;margin-top:1rem;line-height:1.5;">
+      📋 Présentez votre <b>reçu PDF</b> au secrétariat du département comme preuve officielle de dépôt.
+    </p>
+
+    <button class="btn btn-secondary" style="margin-top:1.2rem;width:100%;" onclick="recommencer()">Nouveau dépôt</button>
+  </div>
+
+</div><!-- /container -->
+
+<!-- PDF Preview Modal -->
+<div class="pdf-modal-overlay" id="pdfModalOverlay" onclick="closePdfModalOutside(event)">
+  <div class="pdf-modal">
+    <div class="pdf-modal-header">
+      <span>📄</span>
+      <div class="pdf-modal-title" id="pdfModalTitle">Aperçu PDF</div>
+      <button class="pdf-modal-close" onclick="closePdfModal()">✕ Fermer</button>
+    </div>
+    <iframe id="pdfModalFrame" src="about:blank"></iframe>
+  </div>
+</div>
+
+<script>
+// ── Années ──
+(function() {
+  const sel = document.getElementById('annee');
+  const now = new Date();
+  const endYear = now.getMonth() >= 5 ? now.getFullYear() + 1 : now.getFullYear();
+  for (let y = endYear - 1; y >= 2020; y--) {
+    const o = document.createElement('option');
+    o.value = o.textContent = `${y}-${y+1}`;
+    sel.appendChild(o);
+  }
+})();
+
+// ── API URL ──
+const API_BASE = window.location.origin.includes('localhost') ? 'http://localhost:5050' : window.location.origin;
+
+// ── State ──
+let pdfFile      = null;
+let submittedData = null;
+
+// ── Drag & Drop ──
+const dropZone = document.getElementById('pdfDropZone');
+dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('dragover');
+  const f = e.dataTransfer.files[0];
+  if (f && f.type === 'application/pdf') { pdfFile = f; showPdfBar(f); }
+});
+
+function onPdfChosen(input) {
+  if (input.files[0]) { pdfFile = input.files[0]; showPdfBar(pdfFile); }
+}
+
+function showPdfBar(f) {
+  document.getElementById('pdfFileName').textContent = f.name;
+  document.getElementById('pdfFileSize').textContent = fmtSize(f.size);
+  document.getElementById('pdfPreviewBar').classList.add('visible');
+}
+
+function clearPdf() {
+  pdfFile = null;
+  document.getElementById('pdfFile').value = '';
+  document.getElementById('pdfPreviewBar').classList.remove('visible');
+}
+
+function fmtSize(b) {
+  if (b < 1024)       return b + ' o';
+  if (b < 1024*1024)  return (b/1024).toFixed(1) + ' Ko';
+  return (b/(1024*1024)).toFixed(1) + ' Mo';
+}
+
+// ── Preview PDF sélectionné ──
+function previewSelectedPdf() {
+  if (!pdfFile) return;
+  openModal(pdfFile.name, URL.createObjectURL(pdfFile));
+}
+
+// ── Modal ──
+function openModal(title, src) {
+  document.getElementById('pdfModalTitle').textContent = title;
+  document.getElementById('pdfModalFrame').src = src;
+  document.getElementById('pdfModalOverlay').classList.add('open');
+}
+function closePdfModal() {
+  document.getElementById('pdfModalOverlay').classList.remove('open');
+  document.getElementById('pdfModalFrame').src = 'about:blank';
+}
+function closePdfModalOutside(e) {
+  if (e.target === document.getElementById('pdfModalOverlay')) closePdfModal();
+}
+
+// ── Steps ──
+function setStep(n) {
+  ['page1','page2','page3'].forEach((id,i) => {
+    document.getElementById(id).style.display = (i+1 === n) ? 'block' : 'none';
+  });
+  [1,2,3].forEach(i => {
+    const el = document.getElementById('s'+i);
+    el.classList.remove('active','done');
+    if (i < n)  el.classList.add('done');
+    if (i === n) el.classList.add('active');
+  });
+  clearErrors(); window.scrollTo({top:0,behavior:'smooth'});
+}
+function goStep1() { setStep(1); }
+function goStep2() { if (validateStep1()) setStep(2); }
+
+// ── Validation ──
+function clearErrors() {
+  document.getElementById('errorBanner').style.display = 'none';
+  document.querySelectorAll('.field.invalid').forEach(f => f.classList.remove('invalid'));
+}
+function showErrors(errs) {
+  const b = document.getElementById('errorBanner');
+  document.getElementById('errorList').innerHTML = errs.map(e => `<li>${e}</li>`).join('');
+  b.style.display = 'block'; b.scrollIntoView({behavior:'smooth',block:'center'});
+}
+function markInvalid(id) { document.getElementById(id).classList.add('invalid'); }
+
+function validateStep1() {
+  clearErrors(); const errs = [];
+  const nom    = document.getElementById('nom').value.trim();
+  const prenom = document.getElementById('prenom').value.trim();
+  const email  = document.getElementById('email').value.trim().toLowerCase();
+  const fil    = document.getElementById('filiere').value;
+  const an     = document.getElementById('annee').value;
+  if (!nom)    { errs.push('Le nom est obligatoire.');           markInvalid('f-nom'); }
+  if (!prenom) { errs.push('Le prénom est obligatoire.');        markInvalid('f-prenom'); }
+  if (!email || !email.endsWith('@uca.ac.ma')) { errs.push("L'email doit se terminer par @uca.ac.ma."); markInvalid('f-email'); }
+  if (!fil)    { errs.push('Veuillez choisir une filière.');     markInvalid('f-filiere'); }
+  if (!an)     { errs.push("Veuillez choisir l'année.");         markInvalid('f-annee'); }
+  if (errs.length) { showErrors(errs); return false; } return true;
+}
+
+function validateStep2() {
+  clearErrors(); const errs = [];
+  const intitule  = document.getElementById('intitule').value.trim();
+  const encadrant = document.getElementById('encadrant').value.trim();
+  const lieu      = document.getElementById('lieu_stage').value.trim();
+  if (!intitule)  { errs.push("L'intitulé du rapport est obligatoire.");  markInvalid('f-intitule'); }
+  if (!encadrant) { errs.push("L'encadrant est obligatoire.");             markInvalid('f-encadrant'); }
+  if (!lieu)      { errs.push("Le lieu de stage est obligatoire.");        markInvalid('f-lieu'); }
+  if (errs.length) { showErrors(errs); return false; } return true;
+}
+
+// ── Soumission ──
+async function soumettre() {
+  if (!validateStep2()) return;
+  const btn = document.getElementById('submitBtn');
+  const txt = document.getElementById('submitText');
+  const spn = document.getElementById('spinner');
+  btn.disabled = true; txt.style.display = 'none'; spn.style.display = 'block';
+
+  const payload = {
+    nom:              document.getElementById('nom').value.trim().toUpperCase(),
+    prenom:           document.getElementById('prenom').value.trim(),
+    email:            document.getElementById('email').value.trim().toLowerCase(),
+    filiere:          document.getElementById('filiere').value,
+    annee:            document.getElementById('annee').value,
+    intitule_rapport: document.getElementById('intitule').value.trim(),
+    encadrant:        document.getElementById('encadrant').value.trim(),
+    co_encadrant:     document.getElementById('co_encadrant').value.trim(),
+    lieu_stage:       document.getElementById('lieu_stage').value.trim(),
+  };
+
+  try {
+    let res, data;
+    if (pdfFile) {
+      // Envoi multipart avec PDF
+      const fd = new FormData();
+      Object.entries(payload).forEach(([k,v]) => fd.append(k, v));
+      fd.append('pdf', pdfFile, pdfFile.name);
+      res  = await fetch(API_BASE + '/api/soumettre', { method:'POST', body: fd });
+      data = await res.json();
+    } else {
+      res  = await fetch(API_BASE + '/api/soumettre', {
+        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
+      });
+      data = await res.json();
+    }
+
+    if (data.ok) {
+      submittedData = { ...payload, ...data };
+      document.getElementById('numOrdre').textContent  = data.num_ordre || '—';
+      document.getElementById('r-nom').textContent     = payload.nom + ' ' + payload.prenom;
+      document.getElementById('r-email').textContent   = payload.email;
+      document.getElementById('r-filiere').textContent = payload.filiere;
+      document.getElementById('r-annee').textContent   = payload.annee;
+      document.getElementById('r-date').textContent    = data.date_soumission || new Date().toLocaleString('fr-FR');
+      if (pdfFile) {
+        document.getElementById('r-pdf-row').style.display  = 'flex';
+        document.getElementById('btnDlRapport').style.display = 'flex';
+      }
+      setStep(3);
+    } else if (data.type === 'doublon_email' || data.type === 'doublon_nom') {
+      // Message spécial doublon — retour à l'étape 1 pour montrer le problème sur l'email
+      const msg = (data.errors || []).join(' ');
+      document.getElementById('doublonMsg').textContent = msg;
+      document.getElementById('doublonBanner').style.display = 'block';
+      if (data.type === 'doublon_email') {
+        setStep(1);
+        markInvalid('f-email');
+      }
+      document.getElementById('doublonBanner').scrollIntoView({behavior:'smooth', block:'center'});
+    } else {
+      showErrors(data.errors || ['Erreur inconnue. Veuillez réessayer.']);
+    }
+  } catch (e) {
+    showErrors(["Impossible de joindre le serveur. Vérifiez votre connexion ou contactez le secrétariat."]);
+  } finally {
+    btn.disabled = false; txt.style.display = 'inline'; spn.style.display = 'none';
+  }
+}
+
+// ── Télécharger reçu PDF officiel ──
+async function downloadRecu() {
+  if (!submittedData) return;
+  const btn = document.getElementById('btnDlRecu');
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Génération du reçu…';
+  try {
+    const res = await fetch(API_BASE + '/api/recu-pdf', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(submittedData)
+    });
+    if (!res.ok) throw new Error();
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href     = URL.createObjectURL(blob);
+    a.download = `recu_PFE_${submittedData.num_ordre || 'depot'}.pdf`;
+    a.click();
+  } catch {
+    alert('Impossible de générer le reçu PDF. Contactez le secrétariat.');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '📥 Télécharger mon reçu de dépôt (PDF officiel)';
+  }
+}
+
+// ── Télécharger son propre rapport PDF ──
+function downloadMonRapport() {
+  if (!pdfFile) return;
+  const a = document.createElement('a');
+  a.href     = URL.createObjectURL(pdfFile);
+  a.download = pdfFile.name;
+  a.click();
+}
+
+// ── Recommencer ──
+function recommencer() {
+  ['nom','prenom','email','intitule','encadrant','co_encadrant','lieu_stage'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  document.getElementById('filiere').selectedIndex = 0;
+  document.getElementById('annee').selectedIndex   = 0;
+  clearPdf(); pdfFile = null; submittedData = null;
+  document.getElementById('r-pdf-row').style.display    = 'none';
+  document.getElementById('btnDlRapport').style.display = 'none';
+  setStep(1);
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  if (document.getElementById('page1').style.display !== 'none') goStep2();
+});
+</script>
+</body>
+</html>
