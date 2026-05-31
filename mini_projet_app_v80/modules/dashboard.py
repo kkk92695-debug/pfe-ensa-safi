@@ -70,6 +70,14 @@ def show_dashboard_page():
     st.session_state.page = "login"
     st.rerun()
 
+  # ── Auto-refresh toutes les 30 secondes sans déconnexion ──────────────
+  import time as _time
+  if "last_refresh" not in st.session_state:
+    st.session_state.last_refresh = _time.time()
+  if _time.time() - st.session_state.last_refresh > 30:
+    st.session_state.last_refresh = _time.time()
+    st.rerun()
+
   dark   = st.session_state.get("dark_mode", False)
   role   = st.session_state.get("role", "Professeur")
   username = st.session_state.get("username", "")
