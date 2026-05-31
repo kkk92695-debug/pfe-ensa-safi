@@ -157,7 +157,7 @@ def show_dashboard_page():
   # ── Load data ────────────────────────────────────────────────────────────
   # ── Auto-refresh toutes les 30 secondes sans déconnecter ──────────────
   if HAS_AUTOREFRESH:
-    st_autorefresh(interval=10000, key="data_refresh")
+    st_autorefresh(interval=30000, key="data_refresh")
   df = load_data()
 
   # ── KPI METRICS ─────────────────────────────────────────────────────────
@@ -642,7 +642,13 @@ def show_dashboard_page():
         current_pdf = str(student.get('pdf_filename', '')).strip()
         pdf_valid = isinstance(student.get('pdf_filename'), str) and current_pdf not in ('','nan','None','NaN')
 
-        if pdf_valid and os.path.exists(get_pdf_path(current_pdf)):
+        from utils.data_manager import get_pdf_url, _use_supabase, _upload_pdf_supabase
+        # Vérifier si PDF existe (Supabase ou local)
+        pdf_url_gest = get_pdf_url(current_pdf) if (_use_supabase() and pdf_valid) else None
+        pdf_exists_local = pdf_valid and os.path.exists(get_pdf_path(current_pdf))
+        pdf_exists = pdf_url_gest is not None or pdf_exists_local
+
+        if pdf_exists:
           st.markdown(
             f'<div style="background:{"#0d2b1a" if dark else "#f0fdf4"};border:1px solid #86efac;'
             f'border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:10px;">'
@@ -651,9 +657,12 @@ def show_dashboard_page():
             f'<div style="color:#166534;font-size:0.75rem;">{current_pdf}</div></div></div>',
             unsafe_allow_html=True)
           st.markdown("<br>", unsafe_allow_html=True)
-          with open(get_pdf_path(current_pdf), "rb") as _f:
-            st.download_button("Télécharger le PDF actuel", data=_f.read(),
-                      file_name=current_pdf, mime="application/pdf", key="btn_dl_current_pdf")
+          if pdf_url_gest:
+            st.markdown(f'<a href="{pdf_url_gest}" target="_blank" download style="display:inline-block;background:#1d4ed8;color:white;padding:8px 16px;border-radius:6px;font-size:0.85rem;text-decoration:none;">⬇ Télécharger le PDF actuel</a>', unsafe_allow_html=True)
+          elif pdf_exists_local:
+            with open(get_pdf_path(current_pdf), "rb") as _f:
+              st.download_button("Télécharger le PDF actuel", data=_f.read(),
+                        file_name=current_pdf, mime="application/pdf", key="btn_dl_current_pdf")
           # BF-D05 : Remplacement PDF → tous les rôles
           replace_pdf = st.checkbox("Remplacer par un nouveau PDF", key="chk_replace_pdf")
         else:
@@ -671,12 +680,16 @@ def show_dashboard_page():
             type=["pdf"], key=f"pdf_upload_{selected_num}")
           if uploaded_pdf:
             if st.button("Enregistrer le PDF", type="primary", key="btn_save_pdf"):
-              from utils.data_manager import UPLOADS_DIR
-              os.makedirs(UPLOADS_DIR, exist_ok=True)
               safe = f"{selected_num}_{student['nom']}_{student['prenom']}_{student['annee']}.pdf"
               safe = safe.replace(" ","_").replace("/","-")
-              with open(get_pdf_path(safe), "wb") as _f:
-                _f.write(uploaded_pdf.getbuffer())
+              pdf_bytes = bytes(uploaded_pdf.getbuffer())
+              if _use_supabase():
+                _upload_pdf_supabase(pdf_bytes, safe)
+              else:
+                from utils.data_manager import UPLOADS_DIR
+                os.makedirs(UPLOADS_DIR, exist_ok=True)
+                with open(get_pdf_path(safe), "wb") as _f:
+                  _f.write(pdf_bytes)
               update_student(selected_num, {'pdf_filename': safe})
               st.success(f"PDF enregistré pour {student['nom']} {student['prenom']} !")
               st.rerun()
