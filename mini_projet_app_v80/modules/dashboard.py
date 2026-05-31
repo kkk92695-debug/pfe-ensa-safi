@@ -372,19 +372,30 @@ def show_dashboard_page():
             with c3: st.markdown(f'<div style="{row_style}text-align:center;"><span style="background:#1d4ed8;color:#ffffff;padding:2px 8px;border-radius:12px;font-size:0.72rem;font-weight:700;">{row["filiere"]}</span></div>', unsafe_allow_html=True)
             with c4: st.markdown(f'<div style="{row_style}font-size:0.78rem;color:{text_sub};text-align:center;">{row["annee"]}</div>', unsafe_allow_html=True)
             with c5:
-              if os.path.exists(pdf_path):
+              from utils.data_manager import get_pdf_url, _use_supabase
+              pdf_filename = str(row.get('pdf_filename', ''))
+              pdf_available = False
+              pdf_url = None
+              if _use_supabase() and pdf_filename and pdf_filename.strip():
+                pdf_url = get_pdf_url(pdf_filename)
+                pdf_available = True
+              elif os.path.exists(pdf_path):
+                pdf_available = True
+              if pdf_available:
                 cb1, cb2 = st.columns(2)
                 with cb1:
-                  # Bouton Aperçu — bascule l'affichage inline
                   preview_key = f"show_preview_{num_ordre_key}"
                   label_preview = "Fermer" if st.session_state.get(preview_key) else "Lire"
                   if st.button(label_preview, key=f"prev_btn_{num_ordre_key}", use_container_width=True):
                     st.session_state[preview_key] = not st.session_state.get(preview_key, False)
                     st.rerun()
                 with cb2:
-                  with open(pdf_path, "rb") as _pf:
-                    st.download_button("⬇ PDF", data=_pf.read(), file_name=str(row['pdf_filename']),
-                              mime="application/pdf", key=f"dl_{num_ordre_key}", use_container_width=True)
+                  if pdf_url:
+                    st.markdown(f'<a href="{pdf_url}" target="_blank" download style="display:block;text-align:center;background:#1d4ed8;color:white;padding:6px;border-radius:6px;font-size:0.78rem;text-decoration:none;">⬇ PDF</a>', unsafe_allow_html=True)
+                  elif os.path.exists(pdf_path):
+                    with open(pdf_path, "rb") as _pf:
+                      st.download_button("⬇ PDF", data=_pf.read(), file_name=str(row['pdf_filename']),
+                                mime="application/pdf", key=f"dl_{num_ordre_key}", use_container_width=True)
               else:
                 st.markdown('<div style="text-align:center;font-size:0.75rem;color:#9ca3af;padding:8px 0;">Non trouvé</div>', unsafe_allow_html=True)
 
