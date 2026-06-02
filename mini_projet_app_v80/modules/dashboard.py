@@ -143,7 +143,7 @@ def show_dashboard_page():
   with col_h2:
     st.markdown("<br>", unsafe_allow_html=True)
     # Dark/Light toggle
-    mode_label = "☀️ Mode clair" if dark else "🌙 Mode sombre"
+    mode_label = "Mode clair" if dark else "Mode sombre"
     if st.button(mode_label, use_container_width=True, key="btn_toggle_theme"):
       st.session_state.dark_mode = not dark
       st.rerun()
@@ -411,7 +411,7 @@ def show_dashboard_page():
                     st.markdown(f'<a href="{pdf_url}" target="_blank" download style="display:block;text-align:center;background:#1d4ed8;color:white;padding:6px;border-radius:6px;font-size:0.78rem;text-decoration:none;">⬇ PDF</a>', unsafe_allow_html=True)
                   elif os.path.exists(pdf_path):
                     with open(pdf_path, "rb") as _pf:
-                      st.download_button("⬇ PDF", data=_pf.read(), file_name=str(row['pdf_filename']),
+                      st.download_button("PDF", data=_pf.read(), file_name=str(row['pdf_filename']),
                                 mime="application/pdf", key=f"dl_{num_ordre_key}", use_container_width=True)
               else:
                 st.markdown('<div style="text-align:center;font-size:0.75rem;color:#9ca3af;padding:8px 0;">Non trouvé</div>', unsafe_allow_html=True)
@@ -646,7 +646,7 @@ def show_dashboard_page():
         st.markdown("<br>", unsafe_allow_html=True)
         col_upd, col_del = st.columns(2)
         with col_upd:
-          if st.button("✅ Mettre à jour", type="primary", use_container_width=True, key="btn_update_student"):
+          if st.button("Mettre à jour", type="primary", use_container_width=True, key="btn_update_student"):
             updates = {
               'correction': new_correction,
               'nb_copies_bibliotheque': new_copies,
