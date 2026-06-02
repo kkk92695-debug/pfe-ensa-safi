@@ -156,10 +156,7 @@ def show_dashboard_page():
 
   # ── Load data ────────────────────────────────────────────────────────────
   # Rafraîchissement auto — désactivé dans l'onglet Gestion
-  if HAS_AUTOREFRESH:
-    _in_gestion = st.session_state.get("active_tab", "") == "gestion" or st.session_state.get("chk_replace_pdf", False)
-    if not _in_gestion:
-      st_autorefresh(interval=5000, key="data_refresh")
+  # Autorefresh géré dans tab1 uniquement
   df = load_data()
 
   # ── KPI METRICS ─────────────────────────────────────────────────────────
@@ -257,6 +254,9 @@ def show_dashboard_page():
   # =====================================================================
   with tab1:
     st.session_state["active_tab"] = "liste"
+    # Autorefresh uniquement dans cet onglet
+    if HAS_AUTOREFRESH:
+      st_autorefresh(interval=5000, key="data_refresh_liste")
 
     if df.empty:
       st.info("Aucun rapport soumis pour le moment.")
