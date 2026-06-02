@@ -155,13 +155,11 @@ def show_dashboard_page():
   st.markdown("")
 
   # ── Load data ────────────────────────────────────────────────────────────
-  # Rafraîchissement auto
+  # Rafraîchissement auto — désactivé dans l'onglet Gestion
   if HAS_AUTOREFRESH:
-    _replacing = st.session_state.get("chk_replace_pdf", False)
-    # Si remplacement PDF coché → refresh très lent (120s) pour laisser le temps d'upload
-    # Sinon → refresh normal 5s
-    _interval = 120000 if _replacing else 5000
-    st_autorefresh(interval=_interval, key="data_refresh")
+    _in_gestion = st.session_state.get("active_tab", "") == "gestion" or st.session_state.get("chk_replace_pdf", False)
+    if not _in_gestion:
+      st_autorefresh(interval=5000, key="data_refresh")
   df = load_data()
 
   # ── KPI METRICS ─────────────────────────────────────────────────────────
@@ -258,6 +256,8 @@ def show_dashboard_page():
   # TAB 1 : LISTE
   # =====================================================================
   with tab1:
+    st.session_state["active_tab"] = "liste"
+
     if df.empty:
       st.info("Aucun rapport soumis pour le moment.")
     else:
@@ -533,6 +533,8 @@ def show_dashboard_page():
   # TAB 3 : GESTION
   # =====================================================================
   with tab3:
+    st.session_state["active_tab"] = "gestion"
+
     st.markdown(f'<div style="font-size:1.05rem;font-weight:700;color:{text_main};margin-bottom:0.8rem;border-left:4px solid #2563eb;padding-left:10px;">Modifier / Mettre à jour un étudiant</div>', unsafe_allow_html=True)
 
     if df.empty:
