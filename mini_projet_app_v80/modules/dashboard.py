@@ -156,8 +156,9 @@ def show_dashboard_page():
 
   # ── Load data ────────────────────────────────────────────────────────────
   # ── Auto-refresh toutes les 30 secondes sans déconnecter ──────────────
-  # Rafraîchissement auto — désactivé pendant upload
-  if HAS_AUTOREFRESH and not st.session_state.get("uploading_pdf", False):
+  # Rafraîchissement auto — désactivé pendant upload ou gestion PDF
+  _in_gestion = st.session_state.get("uploading_pdf", False) or st.session_state.get("in_gestion", False)
+  if HAS_AUTOREFRESH and not _in_gestion:
     st_autorefresh(interval=5000, key="data_refresh")
   df = load_data()
 
@@ -529,6 +530,10 @@ def show_dashboard_page():
   # =====================================================================
   # TAB 3 : GESTION
   # =====================================================================
+  # Reset gestion state quand on revient sur tab1 ou tab2
+  if not st.session_state.get("uploading_pdf", False):
+    st.session_state.in_gestion = False
+
   with tab3:
     st.markdown(f'<div style="font-size:1.05rem;font-weight:700;color:{text_main};margin-bottom:0.8rem;border-left:4px solid #2563eb;padding-left:10px;">Modifier / Mettre à jour un étudiant</div>', unsafe_allow_html=True)
 
@@ -678,6 +683,7 @@ def show_dashboard_page():
         if replace_pdf:
           # Désactiver le rafraîchissement auto pendant l'upload
           st.session_state.uploading_pdf = True
+          st.session_state.in_gestion = True
           uploaded_pdf = st.file_uploader(
             f"📎 Rapport PDF de {student['nom']} {student['prenom']}",
             type=["pdf"], key=f"pdf_upload_{selected_num}")
@@ -696,6 +702,7 @@ def show_dashboard_page():
                   update_student(selected_num, {'pdf_filename': safe})
                   st.success(f"✅ PDF remplacé avec succès pour {student['nom']} {student['prenom']} !")
                   st.session_state.uploading_pdf = False
+                  st.session_state.in_gestion = False
                   st.session_state.pop(f"pdf_bytes_{selected_num}", None)
                   st.rerun()
                 else:
