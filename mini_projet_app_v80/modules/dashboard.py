@@ -641,20 +641,17 @@ def show_dashboard_page():
 
         uploaded_pdf = None
         if replace_pdf:
-          # Afficher message si PDF déjà chargé en session
-          _pdf_ready = f"pdf_bytes_{selected_num}" in st.session_state
-          if _pdf_ready:
-            st.success(f"PDF chargé et prêt — cliquez Mettre à jour pour enregistrer")
-            if st.button("Changer le PDF", key=f"btn_change_pdf_{selected_num}"):
-              del st.session_state[f"pdf_bytes_{selected_num}"]
-              st.rerun()
-          else:
-            uploaded_pdf = st.file_uploader(
-              f"Nouveau rapport PDF de {student['nom']} {student['prenom']}",
-              type=["pdf"], key=f"pdf_upload_{selected_num}")
-            if uploaded_pdf:
-              st.session_state[f"pdf_bytes_{selected_num}"] = bytes(uploaded_pdf.getbuffer())
-              st.rerun()
+          # Toujours afficher le file_uploader
+          uploaded_pdf = st.file_uploader(
+            f"Nouveau rapport PDF de {student['nom']} {student['prenom']}",
+            type=["pdf"], key=f"pdf_upload_{selected_num}")
+          if uploaded_pdf:
+            # Sauvegarder immédiatement dans session_state
+            st.session_state[f"pdf_bytes_{selected_num}"] = bytes(uploaded_pdf.getbuffer())
+            st.session_state[f"pdf_name_{selected_num}"] = uploaded_pdf.name
+          # Si PDF sauvegardé en session, afficher confirmation
+          if f"pdf_bytes_{selected_num}" in st.session_state:
+            st.success(f"PDF prêt : {st.session_state.get(f'pdf_name_{selected_num}', '')} — cliquez Mettre à jour")
 
         # ── Bouton unique Mettre à jour ────────────────────────────────────────
         st.markdown("<br>", unsafe_allow_html=True)
