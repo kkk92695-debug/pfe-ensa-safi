@@ -107,11 +107,13 @@ def get_next_num_ordre(annee: str = None) -> str:
 # ── UPLOAD PDF vers Supabase Storage ──────────────────────────────────────────
 def _upload_pdf_supabase(pdf_bytes: bytes, filename: str) -> bool:
     try:
+        # Essayer upsert (remplace si existe)
         url = f"{_get_supabase_url()}/storage/v1/object/{STORAGE_BUCKET}/{filename}"
         headers = {
             "apikey": _get_supabase_key(),
             "Authorization": f"Bearer {_get_supabase_key()}",
             "Content-Type": "application/pdf",
+            "x-upsert": "true",
         }
         r = requests.post(url, headers=headers, data=pdf_bytes, timeout=30)
         return r.status_code in (200, 201)
