@@ -157,7 +157,7 @@ def show_dashboard_page():
   # ── Load data ────────────────────────────────────────────────────────────
   # ── Auto-refresh toutes les 30 secondes sans déconnecter ──────────────
   if HAS_AUTOREFRESH:
-    st_autorefresh(interval=30000, key="data_refresh")
+    st_autorefresh(interval=5000, key="data_refresh")
   df = load_data()
 
   # ── KPI METRICS ─────────────────────────────────────────────────────────
