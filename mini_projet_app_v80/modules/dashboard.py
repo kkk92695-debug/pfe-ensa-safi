@@ -610,10 +610,44 @@ def show_dashboard_page():
           _fil_idx = _fil_opts.index(_cur_fil) if _cur_fil in _fil_opts else 0
           new_filiere = st.selectbox("Filière", _fil_opts, index=_fil_idx, key="gest_filiere_edit")
 
+        # ── Section PDF ───────────────────────────────────────────────────────
+        st.markdown("---")
+        current_pdf = str(student.get('pdf_filename', '')).strip()
+        pdf_valid = isinstance(student.get('pdf_filename'), str) and current_pdf not in ('','nan','None','NaN')
+        from utils.data_manager import get_pdf_url, _use_supabase, _upload_pdf_supabase
+        pdf_exists = (pdf_valid and _use_supabase()) or (pdf_valid and os.path.exists(get_pdf_path(current_pdf)))
+
+        # Afficher statut PDF
+        if pdf_exists:
+          st.markdown(
+            f'<div style="background:{"#0d2b1a" if dark else "#f0fdf4"};border:1px solid #86efac;'
+            f'border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:10px;margin-bottom:10px;">'
+            f'<span style="font-size:1.3rem;">✅</span>'
+            f'<div><div style="font-weight:600;color:#15803d;font-size:0.88rem;">PDF déjà présent : {current_pdf}</div></div></div>',
+            unsafe_allow_html=True)
+          replace_pdf = st.checkbox("Remplacer le PDF existant par un nouveau", key="chk_replace_pdf")
+        else:
+          st.markdown(
+            f'<div style="background:{"#2b2300" if dark else "#fef9c3"};border:1px solid #fde047;'
+            f'border-radius:8px;padding:10px 14px;margin-bottom:10px;">'
+            f'<b style="color:#92400e;">⚠️ Aucun PDF pour cet étudiant</b></div>',
+            unsafe_allow_html=True)
+          replace_pdf = True
+
+        uploaded_pdf = None
+        if replace_pdf:
+          uploaded_pdf = st.file_uploader(
+            f"📎 Nouveau rapport PDF de {student['nom']} {student['prenom']}",
+            type=["pdf"], key=f"pdf_upload_{selected_num}")
+          if uploaded_pdf:
+            st.session_state[f"pdf_bytes_{selected_num}"] = bytes(uploaded_pdf.getbuffer())
+
+        # ── Bouton unique Mettre à jour ────────────────────────────────────────
+        st.markdown("<br>", unsafe_allow_html=True)
         col_upd, col_del = st.columns(2)
         with col_upd:
-          if st.button("Mettre à jour", type="primary", use_container_width=True, key="btn_update_student"):
-            update_student(selected_num, {
+          if st.button("✅ Mettre à jour", type="primary", use_container_width=True, key="btn_update_student"):
+            updates = {
               'correction': new_correction,
               'nb_copies_bibliotheque': new_copies,
               'encadrant': new_encadrant,
@@ -624,8 +658,43 @@ def show_dashboard_page():
               'prenom': new_prenom.strip(),
               'email': new_email.strip(),
               'filiere': new_filiere,
-            })
-            st.success("✅ Informations mises à jour ! Les autres utilisateurs verront les changements dans 5 secondes.")
+            }
+            # Traiter le PDF si uploadé
+            if uploaded_pdf or f"pdf_bytes_{selected_num}" in st.session_state:
+              pdf_bytes = st.session_state.get(f"pdf_bytes_{selected_num}")
+              if pdf_bytes is None and uploaded_pdf:
+                pdf_bytes = bytes(uploaded_pdf.getbuffer())
+              if pdf_bytes:
+                safe = f"{selected_num}_{new_nom.strip().upper()}_{new_prenom.strip()}_{student['annee']}.pdf"
+                safe = safe.replace(" ","_").replace("/","-")
+                # Supprimer ancien PDF si différent
+                if _use_supabase() and pdf_valid and current_pdf != safe:
+                  try:
+                    import requests as _req
+                    from utils.data_manager import _get_supabase_url, _get_supabase_key, STORAGE_BUCKET
+                    _req.delete(
+                      f"{_get_supabase_url()}/storage/v1/object/{STORAGE_BUCKET}/{current_pdf}",
+                      headers={"apikey": _get_supabase_key(), "Authorization": f"Bearer {_get_supabase_key()}"},
+                      timeout=10)
+                  except Exception:
+                    pass
+                if _use_supabase():
+                  ok = _upload_pdf_supabase(pdf_bytes, safe)
+                  if ok:
+                    updates['pdf_filename'] = safe
+                    st.session_state.pop(f"pdf_bytes_{selected_num}", None)
+                  else:
+                    st.error("❌ Erreur upload PDF — les autres infos ont été sauvegardées")
+                else:
+                  from utils.data_manager import UPLOADS_DIR
+                  os.makedirs(UPLOADS_DIR, exist_ok=True)
+                  with open(get_pdf_path(safe), "wb") as _f:
+                    _f.write(pdf_bytes)
+                  updates['pdf_filename'] = safe
+                  st.session_state.pop(f"pdf_bytes_{selected_num}", None)
+            update_student(selected_num, updates)
+            st.success("✅ Étudiant mis à jour ! Visible chez tous dans 5 secondes.")
+            st.rerun()
         with col_del:
           if can_delete_student:
             if st.button("Supprimer cet étudiant", type="secondary", use_container_width=True, key="btn_delete_student"):
@@ -636,84 +705,6 @@ def show_dashboard_page():
               st.rerun()
           else:
             st.caption("(Suppression réservée à l'Administration)")
-
-        # Upload PDF
-        st.markdown("---")
-        current_pdf = str(student.get('pdf_filename', '')).strip()
-        pdf_valid = isinstance(student.get('pdf_filename'), str) and current_pdf not in ('','nan','None','NaN')
-
-        from utils.data_manager import get_pdf_url, _use_supabase, _upload_pdf_supabase
-        # Vérifier si PDF existe (Supabase ou local)
-        pdf_url_gest = get_pdf_url(current_pdf) if (_use_supabase() and pdf_valid) else None
-        pdf_exists_local = pdf_valid and os.path.exists(get_pdf_path(current_pdf))
-        pdf_exists = pdf_url_gest is not None or pdf_exists_local
-
-        if pdf_exists:
-          st.markdown(
-            f'<div style="background:{"#0d2b1a" if dark else "#f0fdf4"};border:1px solid #86efac;'
-            f'border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:10px;">'
-            f'<span style="font-size:1.3rem;">✅</span>'
-            f'<div><div style="font-weight:600;color:#15803d;font-size:0.88rem;">PDF déjà présent</div>'
-            f'<div style="color:#166534;font-size:0.75rem;">{current_pdf}</div></div></div>',
-            unsafe_allow_html=True)
-          st.markdown("<br>", unsafe_allow_html=True)
-          if pdf_url_gest:
-            st.markdown(f'<a href="{pdf_url_gest}" target="_blank" download style="display:inline-block;background:#1d4ed8;color:white;padding:8px 16px;border-radius:6px;font-size:0.85rem;text-decoration:none;">⬇ Télécharger le PDF actuel</a>', unsafe_allow_html=True)
-          elif pdf_exists_local:
-            with open(get_pdf_path(current_pdf), "rb") as _f:
-              st.download_button("Télécharger le PDF actuel", data=_f.read(),
-                        file_name=current_pdf, mime="application/pdf", key="btn_dl_current_pdf")
-          # BF-D05 : Remplacement PDF → tous les rôles
-          replace_pdf = st.checkbox("Remplacer par un nouveau PDF", key="chk_replace_pdf")
-        else:
-          st.markdown(
-            f'<div style="background:{"#2b2300" if dark else "#fef9c3"};border:1px solid #fde047;'
-            f'border-radius:8px;padding:10px 14px;">'
-            f'<b style="color:#92400e;">⚠️ Aucun PDF — uploadez le rapport ci-dessous</b></div>',
-            unsafe_allow_html=True)
-          # BF-D05 : Remplacement PDF → tous les rôles
-          replace_pdf = True
-
-        if replace_pdf:
-          uploaded_pdf = st.file_uploader(
-            f"📎 Nouveau rapport PDF de {student['nom']} {student['prenom']}",
-            type=["pdf"], key=f"pdf_upload_{selected_num}")
-          if uploaded_pdf:
-            # Stocker dans session_state pour éviter la perte
-            st.session_state[f"pdf_bytes_{selected_num}"] = bytes(uploaded_pdf.getbuffer())
-            col_save, _ = st.columns([1,2])
-            with col_save:
-              if st.button("✅ Enregistrer le PDF", type="primary", key="btn_save_pdf", use_container_width=True):
-                safe = f"{selected_num}_{student['nom']}_{student['prenom']}_{student['annee']}.pdf"
-                safe = safe.replace(" ","_").replace("/","-")
-                pdf_bytes = st.session_state.get(f"pdf_bytes_{selected_num}", bytes(uploaded_pdf.getbuffer()))
-                # Supprimer l'ancien PDF de Supabase si différent
-                if _use_supabase() and pdf_valid and current_pdf != safe:
-                  try:
-                    import requests as _req
-                    from utils.data_manager import _get_supabase_url, _get_supabase_key, STORAGE_BUCKET
-                    del_url = f"{_get_supabase_url()}/storage/v1/object/{STORAGE_BUCKET}/{current_pdf}"
-                    _req.delete(del_url, headers={"apikey": _get_supabase_key(), "Authorization": f"Bearer {_get_supabase_key()}"}, timeout=10)
-                  except Exception:
-                    pass
-                if _use_supabase():
-                  success = _upload_pdf_supabase(pdf_bytes, safe)
-                  if success:
-                    update_student(selected_num, {'pdf_filename': safe})
-                    st.session_state.pop(f"pdf_bytes_{selected_num}", None)
-                    st.success(f"✅ PDF remplacé avec succès !")
-                    st.rerun()
-                  else:
-                    st.error("❌ Erreur lors de l'upload — réessayez")
-                else:
-                  from utils.data_manager import UPLOADS_DIR
-                  os.makedirs(UPLOADS_DIR, exist_ok=True)
-                  with open(get_pdf_path(safe), "wb") as _f:
-                    _f.write(pdf_bytes)
-                  update_student(selected_num, {'pdf_filename': safe})
-                  st.session_state.pop(f"pdf_bytes_{selected_num}", None)
-                  st.success(f"✅ PDF remplacé avec succès !")
-                  st.rerun()
 
     # Ajout manuel
     st.markdown("---")
