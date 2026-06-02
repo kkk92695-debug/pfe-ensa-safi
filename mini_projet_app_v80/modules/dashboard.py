@@ -671,7 +671,9 @@ def show_dashboard_page():
               'filiere': new_filiere,
             }
             # Traiter le PDF si uploadé
-            if uploaded_pdf or f"pdf_bytes_{selected_num}" in st.session_state:
+            _pdf_key = f"pdf_bytes_{selected_num}"
+            st.write(f"DEBUG: pdf_key={_pdf_key}, in_session={_pdf_key in st.session_state}, uploaded={uploaded_pdf is not None}")
+            if uploaded_pdf or _pdf_key in st.session_state:
               pdf_bytes = st.session_state.get(f"pdf_bytes_{selected_num}")
               if pdf_bytes is None and uploaded_pdf:
                 pdf_bytes = bytes(uploaded_pdf.getbuffer())
