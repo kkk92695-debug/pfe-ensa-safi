@@ -733,7 +733,11 @@ def show_dashboard_page():
       # BF-D05 : Upload PDF lors de l'ajout → tous les rôles
       m_pdf = st.file_uploader("📎 Rapport PDF (optionnel)", type=["pdf"], key="m_pdf_upload")
 
-      if st.button("Ajouter l'étudiant", type="primary", key="btn_add_student_manual"):
+      # Afficher message succès si vient d'ajouter
+      if st.session_state.pop("add_success", False):
+        st.success("Etudiant ajouté avec succès ! Formulaire vidé.")
+
+      if st.button("Ajouter l'étudiant", type="primary", key="btn_add_student_manual", disabled=st.session_state.get("adding_student", False)):
         _errs_add = []
         if not m_nom.strip(): _errs_add.append("Le nom est obligatoire.")
         if not m_prenom.strip(): _errs_add.append("Le prénom est obligatoire.")
@@ -745,6 +749,7 @@ def show_dashboard_page():
           for _e in _errs_add:
             st.error(_e)
         else:
+          st.session_state["adding_student"] = True
           add_student({
             'nom': m_nom.strip().upper(), 'prenom': m_prenom.strip(),
             'email': m_email.strip(), 'filiere': m_filiere, 'annee': m_annee,
@@ -755,9 +760,11 @@ def show_dashboard_page():
           }, m_pdf)
           st.success("Étudiant ajouté avec succès !")
           # Vider les champs du formulaire
-          for _k in ["m_nom", "m_prenom", "m_email", "m_intitule", "m_encadrant", "m_co_enc", "m_lieu", "m_pdf"]:
+          for _k in ["m_nom", "m_prenom", "m_email", "m_intitule", "m_encadrant", "m_co_enc", "m_lieu", "m_pdf_upload"]:
             if _k in st.session_state:
               del st.session_state[_k]
+          st.session_state["add_success"] = True
+          st.session_state["adding_student"] = False
           st.rerun()
 
   # =====================================================================
