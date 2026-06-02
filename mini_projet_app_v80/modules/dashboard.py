@@ -754,6 +754,10 @@ def show_dashboard_page():
             'correction': 'Non', 'nb_copies_bibliotheque': 0
           }, m_pdf)
           st.success("Étudiant ajouté avec succès !")
+          # Vider les champs du formulaire
+          for _k in ["m_nom", "m_prenom", "m_email", "m_intitule", "m_encadrant", "m_co_enc", "m_lieu", "m_pdf"]:
+            if _k in st.session_state:
+              del st.session_state[_k]
           st.rerun()
 
   # =====================================================================
