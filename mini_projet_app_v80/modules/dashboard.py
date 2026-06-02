@@ -713,31 +713,35 @@ def show_dashboard_page():
       from utils.data_manager import add_student
       from datetime import datetime as _dt
 
+      # Clé dynamique pour vider les champs après ajout
+      if "form_version" not in st.session_state:
+        st.session_state.form_version = 0
+      _fv = st.session_state.form_version
+
       _cy2 = pd.Timestamp.now().year; _cm2 = pd.Timestamp.now().month
       _le3 = _cy2+1 if _cm2>=6 else _cy2
       _ay3 = [f"{y}-{y+1}" for y in range(_le3-1, 2019, -1)]
 
+      # Afficher message succès
+      if st.session_state.pop("add_success", False):
+        st.success("Etudiant ajouté avec succès !")
+
       m_col1, m_col2 = st.columns(2)
       with m_col1:
-        m_nom   = st.text_input("Nom *",      key="m_nom")
-        m_email  = st.text_input("Email *",      key="m_email")
-        m_filiere = st.selectbox("Filière *", ["GIIA","GTR","GATE","GPMA","GINDUS","GMSI"], key="m_filiere")
-        m_intitule = st.text_input("Intitulé rapport *", key="m_intitule")
-        m_lieu   = st.text_input("Lieu de stage *",  key="m_lieu")
+        m_nom      = st.text_input("Nom *",                    key=f"m_nom_{_fv}")
+        m_email    = st.text_input("Email *",                  key=f"m_email_{_fv}")
+        m_filiere  = st.selectbox("Filière *", ["GIIA","GTR","GATE","GPMA","GINDUS","GMSI"], key=f"m_filiere_{_fv}")
+        m_intitule = st.text_input("Intitulé rapport *",       key=f"m_intitule_{_fv}")
+        m_lieu     = st.text_input("Lieu de stage *",          key=f"m_lieu_{_fv}")
       with m_col2:
-        m_prenom  = st.text_input("Prénom *",    key="m_prenom")
-        m_annee   = st.selectbox("Année *",     _ay3, key="m_annee")
-        m_encadrant = st.text_input("Encadrant *",   key="m_encadrant")
-        m_co_enc  = st.text_input("Co-encadrant (optionnel)",  key="m_co_enc")
+        m_prenom    = st.text_input("Prénom *",                key=f"m_prenom_{_fv}")
+        m_annee     = st.selectbox("Année *", _ay3,            key=f"m_annee_{_fv}")
+        m_encadrant = st.text_input("Encadrant *",             key=f"m_encadrant_{_fv}")
+        m_co_enc    = st.text_input("Co-encadrant (optionnel)", key=f"m_co_enc_{_fv}")
 
-      # BF-D05 : Upload PDF lors de l'ajout → tous les rôles
-      m_pdf = st.file_uploader("📎 Rapport PDF (optionnel)", type=["pdf"], key="m_pdf_upload")
+      m_pdf = st.file_uploader("Rapport PDF (optionnel)", type=["pdf"], key=f"m_pdf_upload_{_fv}")
 
-      # Afficher message succès si vient d'ajouter
-      if st.session_state.pop("add_success", False):
-        st.success("Etudiant ajouté avec succès ! Formulaire vidé.")
-
-      if st.button("Ajouter l'étudiant", type="primary", key="btn_add_student_manual", disabled=st.session_state.get("adding_student", False)):
+      if st.button("Ajouter l'étudiant", type="primary", key="btn_add_student_manual"):
         _errs_add = []
         if not m_nom.strip(): _errs_add.append("Le nom est obligatoire.")
         if not m_prenom.strip(): _errs_add.append("Le prénom est obligatoire.")
@@ -764,7 +768,7 @@ def show_dashboard_page():
             if _k in st.session_state:
               del st.session_state[_k]
           st.session_state["add_success"] = True
-          st.session_state["adding_student"] = False
+          st.session_state.form_version += 1
           st.rerun()
 
   # =====================================================================
