@@ -147,6 +147,10 @@ else:
 
     /* Expander */
     [data-testid="stExpander"] summary span { color: #0f172a !important; font-weight: 600 !important; }
+    [data-testid="stExpander"] { background: #ffffff !important; border: 1px solid #e2e8f0 !important; border-radius: 8px !important; }
+    [data-testid="stExpander"] > div { background: #ffffff !important; }
+    [data-testid="stExpander"] * { color: #0f172a !important; -webkit-text-fill-color: #0f172a !important; }
+    [data-testid="stExpander"] input, [data-testid="stExpander"] textarea, [data-testid="stExpander"] select { background: #f8fafc !important; color: #0f172a !important; border: 1px solid #cbd5e1 !important; }
 
     /* Form submit buttons (secondary = Annuler) */
     button[kind="secondaryFormSubmit"] {
