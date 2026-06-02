@@ -156,9 +156,8 @@ def show_dashboard_page():
 
   # ── Load data ────────────────────────────────────────────────────────────
   # ── Auto-refresh toutes les 30 secondes sans déconnecter ──────────────
-  # Rafraîchissement auto — désactivé pendant upload ou gestion PDF
-  _in_gestion = st.session_state.get("uploading_pdf", False) or st.session_state.get("in_gestion", False)
-  if HAS_AUTOREFRESH and not _in_gestion:
+  # Rafraîchissement auto toutes les 5 secondes
+  if HAS_AUTOREFRESH:
     st_autorefresh(interval=5000, key="data_refresh")
   df = load_data()
 
@@ -530,10 +529,6 @@ def show_dashboard_page():
   # =====================================================================
   # TAB 3 : GESTION
   # =====================================================================
-  # Reset gestion state quand on revient sur tab1 ou tab2
-  if not st.session_state.get("uploading_pdf", False):
-    st.session_state.in_gestion = False
-
   with tab3:
     st.markdown(f'<div style="font-size:1.05rem;font-weight:700;color:{text_main};margin-bottom:0.8rem;border-left:4px solid #2563eb;padding-left:10px;">Modifier / Mettre à jour un étudiant</div>', unsafe_allow_html=True)
 
@@ -680,41 +675,45 @@ def show_dashboard_page():
           replace_pdf = True
 
         if replace_pdf:
-          # Désactiver le rafraîchissement auto pendant l'upload
-          st.session_state.uploading_pdf = True
-          st.session_state.in_gestion = True
           uploaded_pdf = st.file_uploader(
-            f"📎 Rapport PDF de {student['nom']} {student['prenom']}",
+            f"📎 Nouveau rapport PDF de {student['nom']} {student['prenom']}",
             type=["pdf"], key=f"pdf_upload_{selected_num}")
           if uploaded_pdf:
-            st.session_state.uploading_pdf = True
-            # Stocker le PDF dans session_state pour éviter la perte au refresh
+            # Stocker dans session_state pour éviter la perte
             st.session_state[f"pdf_bytes_{selected_num}"] = bytes(uploaded_pdf.getbuffer())
-            st.session_state[f"pdf_name_{selected_num}"] = uploaded_pdf.name
-            if st.button("✅ Enregistrer le PDF", type="primary", key="btn_save_pdf", use_container_width=True):
-              safe = f"{selected_num}_{student['nom']}_{student['prenom']}_{student['annee']}.pdf"
-              safe = safe.replace(" ","_").replace("/","-")
-              pdf_bytes = st.session_state.get(f"pdf_bytes_{selected_num}", bytes(uploaded_pdf.getbuffer()))
-              if _use_supabase():
-                success = _upload_pdf_supabase(pdf_bytes, safe)
-                if success:
-                  update_student(selected_num, {'pdf_filename': safe})
-                  st.success(f"✅ PDF remplacé avec succès pour {student['nom']} {student['prenom']} !")
-                  st.session_state.uploading_pdf = False
-                  st.session_state.in_gestion = False
-                  st.session_state.pop(f"pdf_bytes_{selected_num}", None)
-                  st.rerun()
+            col_save, _ = st.columns([1,2])
+            with col_save:
+              if st.button("✅ Enregistrer le PDF", type="primary", key="btn_save_pdf", use_container_width=True):
+                safe = f"{selected_num}_{student['nom']}_{student['prenom']}_{student['annee']}.pdf"
+                safe = safe.replace(" ","_").replace("/","-")
+                pdf_bytes = st.session_state.get(f"pdf_bytes_{selected_num}", bytes(uploaded_pdf.getbuffer()))
+                # Supprimer l'ancien PDF de Supabase si différent
+                if _use_supabase() and pdf_valid and current_pdf != safe:
+                  try:
+                    import requests as _req
+                    from utils.data_manager import _get_supabase_url, _get_supabase_key, STORAGE_BUCKET
+                    del_url = f"{_get_supabase_url()}/storage/v1/object/{STORAGE_BUCKET}/{current_pdf}"
+                    _req.delete(del_url, headers={"apikey": _get_supabase_key(), "Authorization": f"Bearer {_get_supabase_key()}"}, timeout=10)
+                  except Exception:
+                    pass
+                if _use_supabase():
+                  success = _upload_pdf_supabase(pdf_bytes, safe)
+                  if success:
+                    update_student(selected_num, {'pdf_filename': safe})
+                    st.session_state.pop(f"pdf_bytes_{selected_num}", None)
+                    st.success(f"✅ PDF remplacé avec succès !")
+                    st.rerun()
+                  else:
+                    st.error("❌ Erreur lors de l'upload — réessayez")
                 else:
-                  st.error("❌ Erreur lors de l'upload — réessayez")
-              else:
-                from utils.data_manager import UPLOADS_DIR
-                os.makedirs(UPLOADS_DIR, exist_ok=True)
-                with open(get_pdf_path(safe), "wb") as _f:
-                  _f.write(pdf_bytes)
-                update_student(selected_num, {'pdf_filename': safe})
-                st.success(f"✅ PDF remplacé avec succès pour {student['nom']} {student['prenom']} !")
-                st.session_state.uploading_pdf = False
-                st.rerun()
+                  from utils.data_manager import UPLOADS_DIR
+                  os.makedirs(UPLOADS_DIR, exist_ok=True)
+                  with open(get_pdf_path(safe), "wb") as _f:
+                    _f.write(pdf_bytes)
+                  update_student(selected_num, {'pdf_filename': safe})
+                  st.session_state.pop(f"pdf_bytes_{selected_num}", None)
+                  st.success(f"✅ PDF remplacé avec succès !")
+                  st.rerun()
 
     # Ajout manuel
     st.markdown("---")
