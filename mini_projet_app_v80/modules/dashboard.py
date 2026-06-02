@@ -154,10 +154,19 @@ def show_dashboard_page():
 
   st.markdown("")
 
-  # ── Load data ────────────────────────────────────────────────────────────
-  # Rafraîchissement auto — désactivé dans l'onglet Gestion
-  # Autorefresh géré dans tab1 uniquement
-  df = load_data()
+  # ── Load data avec cache court (5s) pour éviter rechargement à chaque rerun ──
+  # Rafraîchissement auto géré dans tab1 uniquement
+  _cache_key = "df_cache"
+  _cache_time_key = "df_cache_time"
+  import time as _time2
+  _now = _time2.time()
+  _cache_age = _now - st.session_state.get(_cache_time_key, 0)
+  # Recharger seulement si cache > 5s OU si on vient de modifier (pas pendant upload)
+  _force_reload = _cache_age > 5 and not st.session_state.get("chk_replace_pdf", False)
+  if _force_reload or _cache_key not in st.session_state:
+    st.session_state[_cache_key] = load_data()
+    st.session_state[_cache_time_key] = _now
+  df = st.session_state[_cache_key]
 
   # ── KPI METRICS ─────────────────────────────────────────────────────────
   total_etudiants = len(df)
@@ -641,17 +650,24 @@ def show_dashboard_page():
 
         uploaded_pdf = None
         if replace_pdf:
-          # Toujours afficher le file_uploader
-          uploaded_pdf = st.file_uploader(
-            f"Nouveau rapport PDF de {student['nom']} {student['prenom']}",
-            type=["pdf"], key=f"pdf_upload_{selected_num}")
-          if uploaded_pdf:
-            # Sauvegarder immédiatement dans session_state
-            st.session_state[f"pdf_bytes_{selected_num}"] = bytes(uploaded_pdf.getbuffer())
-            st.session_state[f"pdf_name_{selected_num}"] = uploaded_pdf.name
-          # Si PDF sauvegardé en session, afficher confirmation
-          if f"pdf_bytes_{selected_num}" in st.session_state:
-            st.success(f"PDF prêt : {st.session_state.get(f'pdf_name_{selected_num}', '')} — cliquez Mettre à jour")
+          _pdf_key = f"pdf_bytes_{selected_num}"
+          _pdf_name_key = f"pdf_name_{selected_num}"
+
+          if _pdf_key in st.session_state:
+            # PDF déjà chargé — afficher confirmation et bouton pour rechoisir
+            st.success(f"PDF prêt : {st.session_state.get(_pdf_name_key, 'fichier.pdf')} — cliquez Mettre à jour")
+            if st.button("Choisir un autre PDF", key=f"btn_reupload_{selected_num}"):
+              st.session_state.pop(_pdf_key, None)
+              st.session_state.pop(_pdf_name_key, None)
+              st.rerun()
+          else:
+            # Afficher file_uploader
+            uploaded_pdf = st.file_uploader(
+              f"Nouveau rapport PDF de {student['nom']} {student['prenom']}",
+              type=["pdf"], key=f"pdf_upload_{selected_num}")
+            if uploaded_pdf:
+              st.session_state[_pdf_key] = bytes(uploaded_pdf.getbuffer())
+              st.session_state[_pdf_name_key] = uploaded_pdf.name
 
         # ── Bouton unique Mettre à jour ────────────────────────────────────────
         st.markdown("<br>", unsafe_allow_html=True)
@@ -672,7 +688,6 @@ def show_dashboard_page():
             }
             # Traiter le PDF si uploadé
             _pdf_key = f"pdf_bytes_{selected_num}"
-            st.write(f"DEBUG: pdf_key={_pdf_key}, in_session={_pdf_key in st.session_state}, uploaded={uploaded_pdf is not None}")
             if uploaded_pdf or _pdf_key in st.session_state:
               pdf_bytes = st.session_state.get(f"pdf_bytes_{selected_num}")
               if pdf_bytes is None and uploaded_pdf:
