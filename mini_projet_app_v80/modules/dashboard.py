@@ -155,15 +155,13 @@ def show_dashboard_page():
   st.markdown("")
 
   # ── Load data ────────────────────────────────────────────────────────────
-  # Rafraîchissement auto — désactivé si upload PDF en cours
+  # Rafraîchissement auto
   if HAS_AUTOREFRESH:
-    _has_pdf_upload = any(
-      k.startswith("pdf_upload_") and st.session_state.get(k) is not None
-      for k in list(st.session_state.keys())
-    )
     _replacing = st.session_state.get("chk_replace_pdf", False)
-    if not _has_pdf_upload and not _replacing:
-      st_autorefresh(interval=5000, key="data_refresh")
+    # Si remplacement PDF coché → refresh très lent (120s) pour laisser le temps d'upload
+    # Sinon → refresh normal 5s
+    _interval = 120000 if _replacing else 5000
+    st_autorefresh(interval=_interval, key="data_refresh")
   df = load_data()
 
   # ── KPI METRICS ─────────────────────────────────────────────────────────
