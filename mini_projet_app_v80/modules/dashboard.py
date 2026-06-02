@@ -156,7 +156,7 @@ def show_dashboard_page():
 
   # ── Load data ────────────────────────────────────────────────────────────
   # ── Auto-refresh toutes les 30 secondes sans déconnecter ──────────────
-  # Ne pas rafraîchir si un upload est en cours
+  # Rafraîchissement auto — désactivé pendant upload
   if HAS_AUTOREFRESH and not st.session_state.get("uploading_pdf", False):
     st_autorefresh(interval=5000, key="data_refresh")
   df = load_data()
@@ -677,8 +677,7 @@ def show_dashboard_page():
 
         if replace_pdf:
           # Désactiver le rafraîchissement auto pendant l'upload
-          if "uploading_pdf" not in st.session_state:
-            st.session_state.uploading_pdf = False
+          st.session_state.uploading_pdf = True
           uploaded_pdf = st.file_uploader(
             f"📎 Rapport PDF de {student['nom']} {student['prenom']}",
             type=["pdf"], key=f"pdf_upload_{selected_num}")
