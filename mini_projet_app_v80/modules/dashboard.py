@@ -155,10 +155,15 @@ def show_dashboard_page():
   st.markdown("")
 
   # ── Load data ────────────────────────────────────────────────────────────
-  # ── Auto-refresh toutes les 30 secondes sans déconnecter ──────────────
-  # Rafraîchissement auto toutes les 5 secondes
+  # Rafraîchissement auto — désactivé si upload PDF en cours
   if HAS_AUTOREFRESH:
-    st_autorefresh(interval=5000, key="data_refresh")
+    _has_pdf_upload = any(
+      k.startswith("pdf_upload_") and st.session_state.get(k) is not None
+      for k in list(st.session_state.keys())
+    )
+    _replacing = st.session_state.get("chk_replace_pdf", False)
+    if not _has_pdf_upload and not _replacing:
+      st_autorefresh(interval=5000, key="data_refresh")
   df = load_data()
 
   # ── KPI METRICS ─────────────────────────────────────────────────────────
