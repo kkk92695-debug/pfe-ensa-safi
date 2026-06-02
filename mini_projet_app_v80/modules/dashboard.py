@@ -641,11 +641,20 @@ def show_dashboard_page():
 
         uploaded_pdf = None
         if replace_pdf:
-          uploaded_pdf = st.file_uploader(
-            f"📎 Nouveau rapport PDF de {student['nom']} {student['prenom']}",
-            type=["pdf"], key=f"pdf_upload_{selected_num}")
-          if uploaded_pdf:
-            st.session_state[f"pdf_bytes_{selected_num}"] = bytes(uploaded_pdf.getbuffer())
+          # Afficher message si PDF déjà chargé en session
+          _pdf_ready = f"pdf_bytes_{selected_num}" in st.session_state
+          if _pdf_ready:
+            st.success(f"PDF chargé et prêt — cliquez Mettre à jour pour enregistrer")
+            if st.button("Changer le PDF", key=f"btn_change_pdf_{selected_num}"):
+              del st.session_state[f"pdf_bytes_{selected_num}"]
+              st.rerun()
+          else:
+            uploaded_pdf = st.file_uploader(
+              f"Nouveau rapport PDF de {student['nom']} {student['prenom']}",
+              type=["pdf"], key=f"pdf_upload_{selected_num}")
+            if uploaded_pdf:
+              st.session_state[f"pdf_bytes_{selected_num}"] = bytes(uploaded_pdf.getbuffer())
+              st.rerun()
 
         # ── Bouton unique Mettre à jour ────────────────────────────────────────
         st.markdown("<br>", unsafe_allow_html=True)
