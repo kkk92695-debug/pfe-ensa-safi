@@ -630,8 +630,7 @@ def show_dashboard_page():
               'email': new_email.strip(),
               'filiere': new_filiere,
             })
-            st.success("Informations mises à jour !")
-            st.rerun()
+            st.success("✅ Informations mises à jour ! Les autres utilisateurs verront les changements dans 5 secondes.")
         with col_del:
           if can_delete_student:
             if st.button("Supprimer cet étudiant", type="secondary", use_container_width=True, key="btn_delete_student"):
