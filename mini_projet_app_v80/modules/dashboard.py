@@ -588,92 +588,121 @@ def show_dashboard_page():
         student = student_rows.iloc[0]
 
         st.markdown("---")
-        col_e1, col_e2 = st.columns(2)
-        with col_e1:
-          # BF-D09 : Modification Correction → Admin, Prof uniquement
-          if can_edit_correction:
-            new_correction = st.selectbox("Correction", ["Non","Oui"],
-              index=0 if str(student.get('correction','Non')) == 'Non' else 1, key="gest_corr")
+        # ── Formulaire avec st.form pour bloquer les reruns pendant l'upload ──
+        with st.form(key=f"form_update_{selected_num}"):
+          col_e1, col_e2 = st.columns(2)
+          with col_e1:
+            if can_edit_correction:
+              new_correction = st.selectbox("Correction", ["Non","Oui"],
+                index=0 if str(student.get('correction','Non')) == 'Non' else 1)
+            else:
+              new_correction = str(student.get('correction','Non'))
+              st.text_input("Correction", value="Oui" if new_correction=="Oui" else "Non", disabled=True)
+            if can_edit_copies:
+              new_copies = st.number_input("Nb copies bibliothèque",
+                min_value=0, value=int(student.get('nb_copies_bibliotheque', 0) or 0))
+            else:
+              new_copies = int(student.get('nb_copies_bibliotheque', 0) or 0)
+              st.text_input("Nb copies bibliothèque", value=str(new_copies), disabled=True)
+            reg_date = str(student.get('date_depot_secretariat','') or student.get('date_soumission',''))
+            st.text_input("Date enregistrement", value=reg_date, disabled=True)
+            new_nom     = st.text_input("Nom",    value=str(student.get('nom','')))
+            new_prenom  = st.text_input("Prénom", value=str(student.get('prenom','')))
+            new_email   = st.text_input("Email",  value=str(student.get('email','')))
+          with col_e2:
+            new_encadrant = st.text_input("Encadrant",    value=str(student.get('encadrant','')))
+            new_co_enc    = st.text_input("Co-encadrant", value=str(student.get('co_encadrant','')))
+            new_lieu      = st.text_input("Lieu de stage",value=str(student.get('lieu_stage','')))
+            new_intitule  = st.text_area("Intitulé rapport", value=str(student.get('intitule_rapport','')), height=100)
+            _fil_opts = ["GIIA","GTR","GATE","GPMA","GINDUS","GMSI"]
+            _cur_fil  = str(student.get('filiere','GIIA'))
+            _fil_idx  = _fil_opts.index(_cur_fil) if _cur_fil in _fil_opts else 0
+            new_filiere = st.selectbox("Filière", _fil_opts, index=_fil_idx)
+
+          # ── Section PDF dans le form ───────────────────────────────────────
+          st.markdown("---")
+          current_pdf = str(student.get('pdf_filename', '')).strip()
+          pdf_valid = isinstance(student.get('pdf_filename'), str) and current_pdf not in ('','nan','None','NaN')
+          from utils.data_manager import get_pdf_url, _use_supabase, _upload_pdf_supabase
+          pdf_exists = (pdf_valid and _use_supabase()) or (pdf_valid and os.path.exists(get_pdf_path(current_pdf)))
+
+          if pdf_exists:
+            st.markdown(f'<div style="background:{"#0d2b1a" if dark else "#f0fdf4"};border:1px solid #86efac;border-radius:8px;padding:10px 14px;margin-bottom:10px;"><b style="color:#15803d;">PDF présent : {current_pdf}</b></div>', unsafe_allow_html=True)
+            replace_pdf = st.checkbox("Remplacer le PDF existant par un nouveau")
           else:
-            new_correction = str(student.get('correction','Non'))
-            _corr_val = "✅ Oui" if new_correction == "Oui" else "❌ Non"
-            st.text_input("Correction", value=_corr_val, disabled=True, key="gest_corr_ro",
-                          help="Modification réservée aux Administrateurs et Professeurs")
-          # BF-D10 : Modification Copies Biblio → Admin, Biblio uniquement
-          if can_edit_copies:
-            new_copies = st.number_input("Nb copies transmises à la bibliothèque",
-              min_value=0, value=int(student.get('nb_copies_bibliotheque', 0) or 0), key="gest_copies")
-          else:
-            new_copies = int(student.get('nb_copies_bibliotheque', 0) or 0)
-            st.text_input("Nb copies transmises à la bibliothèque",
-                          value=str(new_copies), disabled=True, key="gest_copies_ro",
-                          help="Modification réservée aux Administrateurs et Responsables Bibliothèque")
-          reg_date = str(student.get('date_depot_secretariat','') or student.get('date_soumission',''))
-          st.text_input("📅 Date d'enregistrement", value=reg_date, disabled=True)
-          new_nom = st.text_input("Nom", value=str(student.get('nom','')), key="gest_nom")
-          new_prenom = st.text_input("Prénom", value=str(student.get('prenom','')), key="gest_prenom")
-          new_email = st.text_input("Email", value=str(student.get('email','')), key="gest_email")
-        with col_e2:
-          new_encadrant = st.text_input("Encadrant", value=str(student.get('encadrant','')), key="gest_enc")
-          new_co_enc = st.text_input("Co-encadrant", value=str(student.get('co_encadrant','')), key="gest_co_enc")
-          new_lieu = st.text_input("Lieu de stage", value=str(student.get('lieu_stage','')), key="gest_lieu")
-          new_intitule = st.text_area("Intitulé rapport", value=str(student.get('intitule_rapport','')), key="gest_intitule", height=100)
-          # Filière
-          _fil_opts = ["GIIA","GTR","GATE","GPMA","GINDUS","GMSI"]
-          _cur_fil = str(student.get('filiere','GIIA'))
-          _fil_idx = _fil_opts.index(_cur_fil) if _cur_fil in _fil_opts else 0
-          new_filiere = st.selectbox("Filière", _fil_opts, index=_fil_idx, key="gest_filiere_edit")
+            st.markdown(f'<div style="background:{"#2b2300" if dark else "#fef9c3"};border:1px solid #fde047;border-radius:8px;padding:10px 14px;margin-bottom:10px;"><b style="color:#92400e;">Aucun PDF pour cet étudiant</b></div>', unsafe_allow_html=True)
+            replace_pdf = True
 
-        # ── Section PDF ───────────────────────────────────────────────────────
-        st.markdown("---")
-        current_pdf = str(student.get('pdf_filename', '')).strip()
-        pdf_valid = isinstance(student.get('pdf_filename'), str) and current_pdf not in ('','nan','None','NaN')
-        from utils.data_manager import get_pdf_url, _use_supabase, _upload_pdf_supabase
-        pdf_exists = (pdf_valid and _use_supabase()) or (pdf_valid and os.path.exists(get_pdf_path(current_pdf)))
+          uploaded_pdf = None
+          if replace_pdf:
+            from utils.data_manager import _get_supabase_url, _get_supabase_key, STORAGE_BUCKET
+            _safe_name = f"{selected_num}_{student['nom']}_{student['prenom']}_{student['annee']}.pdf"
+            _safe_name = _safe_name.replace(" ","_").replace("/","-")
+            _upload_url = f"{_get_supabase_url()}/storage/v1/object/{STORAGE_BUCKET}/{_safe_name}"
+            _anon_key = _get_supabase_key()
 
-        # Afficher statut PDF
-        if pdf_exists:
-          st.markdown(
-            f'<div style="background:{"#0d2b1a" if dark else "#f0fdf4"};border:1px solid #86efac;'
-            f'border-radius:8px;padding:10px 14px;display:flex;align-items:center;gap:10px;margin-bottom:10px;">'
-            f'<span style="font-size:1.3rem;">✅</span>'
-            f'<div><div style="font-weight:600;color:#15803d;font-size:0.88rem;">PDF déjà présent : {current_pdf}</div></div></div>',
-            unsafe_allow_html=True)
-          replace_pdf = st.checkbox("Remplacer le PDF existant par un nouveau", key="chk_replace_pdf")
-        else:
-          st.markdown(
-            f'<div style="background:{"#2b2300" if dark else "#fef9c3"};border:1px solid #fde047;'
-            f'border-radius:8px;padding:10px 14px;margin-bottom:10px;">'
-            f'<b style="color:#92400e;">⚠️ Aucun PDF pour cet étudiant</b></div>',
-            unsafe_allow_html=True)
-          replace_pdf = True
+            # Upload direct vers Supabase via JavaScript
+            _upload_result = st.components.v1.html(f"""
+<div id="upload_zone" style="border:2px dashed #2563eb;border-radius:10px;padding:20px;text-align:center;background:#f0f7ff;margin:10px 0;">
+  <p style="color:#1d4ed8;font-weight:600;margin-bottom:10px;">Cliquez pour choisir un PDF</p>
+  <input type="file" id="pdf_input" accept=".pdf" style="display:none">
+  <button onclick="document.getElementById('pdf_input').click()" 
+    style="background:#1d4ed8;color:white;border:none;padding:10px 24px;border-radius:6px;cursor:pointer;font-size:14px;">
+    Choisir le PDF
+  </button>
+  <div id="status" style="margin-top:12px;font-size:13px;color:#374151;"></div>
+  <div id="progress" style="display:none;margin-top:8px;background:#e2e8f0;border-radius:4px;height:8px;">
+    <div id="progress_bar" style="background:#2563eb;height:8px;border-radius:4px;width:0%;transition:width 0.3s;"></div>
+  </div>
+</div>
+<script>
+document.getElementById('pdf_input').addEventListener('change', async function(e) {{
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  document.getElementById('status').innerHTML = 'Chargement: ' + file.name;
+  document.getElementById('progress').style.display = 'block';
+  document.getElementById('progress_bar').style.width = '20%';
+  
+  try {{
+    const response = await fetch('{_upload_url}', {{
+      method: 'POST',
+      headers: {{
+        'apikey': '{_anon_key}',
+        'Authorization': 'Bearer {_anon_key}',
+        'Content-Type': 'application/pdf',
+        'x-upsert': 'true'
+      }},
+      body: file
+    }});
+    
+    document.getElementById('progress_bar').style.width = '100%';
+    
+    if (response.ok || response.status === 200 || response.status === 201) {{
+      document.getElementById('status').innerHTML = '<span style="color:#15803d;font-weight:600;">PDF uploadé avec succès ! Cliquez Mettre à jour</span>';
+      document.getElementById('upload_zone').style.borderColor = '#86efac';
+      document.getElementById('upload_zone').style.background = '#f0fdf4';
+      // Notifier Streamlit que l'upload est fait
+      window.parent.postMessage({{type: 'streamlit:setComponentValue', value: '{_safe_name}'}}, '*');
+    }} else {{
+      document.getElementById('status').innerHTML = '<span style="color:#dc2626;">Erreur: ' + response.status + '</span>';
+    }}
+  }} catch(err) {{
+    document.getElementById('status').innerHTML = '<span style="color:#dc2626;">Erreur: ' + err.message + '</span>';
+  }}
+}});
+</script>
+""", height=160)
+            # Sauvegarder le nom du fichier pour le bouton Mettre à jour
+            if f"pdf_uploaded_{selected_num}" not in st.session_state:
+              st.session_state[f"pdf_uploaded_{selected_num}"] = _safe_name
 
-        uploaded_pdf = None
-        if replace_pdf:
-          _pdf_key = f"pdf_bytes_{selected_num}"
-          _pdf_name_key = f"pdf_name_{selected_num}"
+          # ── Submit button ─────────────────────────────────────────────────
+          col_upd, col_del_placeholder = st.columns(2)
+          with col_upd:
+            submitted = st.form_submit_button("Mettre à jour", type="primary", use_container_width=True)
 
-          if _pdf_key in st.session_state:
-            # PDF déjà chargé — afficher confirmation et bouton pour rechoisir
-            st.success(f"PDF prêt : {st.session_state.get(_pdf_name_key, 'fichier.pdf')} — cliquez Mettre à jour")
-            if st.button("Choisir un autre PDF", key=f"btn_reupload_{selected_num}"):
-              st.session_state.pop(_pdf_key, None)
-              st.session_state.pop(_pdf_name_key, None)
-              st.rerun()
-          else:
-            # Afficher file_uploader
-            uploaded_pdf = st.file_uploader(
-              f"Nouveau rapport PDF de {student['nom']} {student['prenom']}",
-              type=["pdf"], key=f"pdf_upload_{selected_num}")
-            if uploaded_pdf:
-              st.session_state[_pdf_key] = bytes(uploaded_pdf.getbuffer())
-              st.session_state[_pdf_name_key] = uploaded_pdf.name
-
-        # ── Bouton unique Mettre à jour ────────────────────────────────────────
-        st.markdown("<br>", unsafe_allow_html=True)
-        col_upd, col_del = st.columns(2)
-        with col_upd:
-          if st.button("Mettre à jour", type="primary", use_container_width=True, key="btn_update_student"):
+          if submitted:
             updates = {
               'correction': new_correction,
               'nb_copies_bibliotheque': new_copies,
@@ -686,53 +715,24 @@ def show_dashboard_page():
               'email': new_email.strip(),
               'filiere': new_filiere,
             }
-            # Traiter le PDF si uploadé
-            _pdf_key = f"pdf_bytes_{selected_num}"
-            if uploaded_pdf or _pdf_key in st.session_state:
-              pdf_bytes = st.session_state.get(f"pdf_bytes_{selected_num}")
-              if pdf_bytes is None and uploaded_pdf:
-                pdf_bytes = bytes(uploaded_pdf.getbuffer())
-              if pdf_bytes:
-                safe = f"{selected_num}_{new_nom.strip().upper()}_{new_prenom.strip()}_{student['annee']}.pdf"
-                safe = safe.replace(" ","_").replace("/","-")
-                # Supprimer ancien PDF si différent
-                if _use_supabase() and pdf_valid and current_pdf != safe:
-                  try:
-                    import requests as _req
-                    from utils.data_manager import _get_supabase_url, _get_supabase_key, STORAGE_BUCKET
-                    _req.delete(
-                      f"{_get_supabase_url()}/storage/v1/object/{STORAGE_BUCKET}/{current_pdf}",
-                      headers={"apikey": _get_supabase_key(), "Authorization": f"Bearer {_get_supabase_key()}"},
-                      timeout=10)
-                  except Exception:
-                    pass
-                if _use_supabase():
-                  ok = _upload_pdf_supabase(pdf_bytes, safe)
-                  if ok:
-                    updates['pdf_filename'] = safe
-                    st.session_state.pop(f"pdf_bytes_{selected_num}", None)
-                  else:
-                    st.error("❌ Erreur upload PDF — les autres infos ont été sauvegardées")
-                else:
-                  from utils.data_manager import UPLOADS_DIR
-                  os.makedirs(UPLOADS_DIR, exist_ok=True)
-                  with open(get_pdf_path(safe), "wb") as _f:
-                    _f.write(pdf_bytes)
-                  updates['pdf_filename'] = safe
-                  st.session_state.pop(f"pdf_bytes_{selected_num}", None)
+            # PDF déjà uploadé directement vers Supabase via JS
+            _uploaded_key = f"pdf_uploaded_{selected_num}"
+            if _uploaded_key in st.session_state:
+              updates['pdf_filename'] = st.session_state[_uploaded_key]
+              st.session_state.pop(_uploaded_key, None)
             update_student(selected_num, updates)
-            st.success("✅ Étudiant mis à jour ! Visible chez tous dans 5 secondes.")
+            st.success("Etudiant mis à jour ! Visible chez tous dans 5 secondes.")
             st.rerun()
-        with col_del:
-          if can_delete_student:
-            if st.button("Supprimer cet étudiant", type="secondary", use_container_width=True, key="btn_delete_student"):
-              delete_student(selected_num)
-              if "gest_select_etudiant" in st.session_state:
-                del st.session_state["gest_select_etudiant"]
-              st.warning("Étudiant supprimé.")
-              st.rerun()
-          else:
-            st.caption("(Suppression réservée à l'Administration)")
+        # Bouton suppression EN DEHORS du form
+        if can_delete_student:
+          if st.button("Supprimer cet étudiant", type="secondary", use_container_width=True, key="btn_delete_student"):
+            delete_student(selected_num)
+            if "gest_select_etudiant" in st.session_state:
+              del st.session_state["gest_select_etudiant"]
+            st.warning("Étudiant supprimé.")
+            st.rerun()
+        else:
+          st.caption("(Suppression réservée à l'Administration)")
 
     # Ajout manuel
     st.markdown("---")
