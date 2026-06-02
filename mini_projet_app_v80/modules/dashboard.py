@@ -156,7 +156,8 @@ def show_dashboard_page():
 
   # ── Load data ────────────────────────────────────────────────────────────
   # ── Auto-refresh toutes les 30 secondes sans déconnecter ──────────────
-  if HAS_AUTOREFRESH:
+  # Ne pas rafraîchir si un upload est en cours
+  if HAS_AUTOREFRESH and not st.session_state.get("uploading_pdf", False):
     st_autorefresh(interval=5000, key="data_refresh")
   df = load_data()
 
@@ -675,24 +676,40 @@ def show_dashboard_page():
           replace_pdf = True
 
         if replace_pdf:
+          # Désactiver le rafraîchissement auto pendant l'upload
+          if "uploading_pdf" not in st.session_state:
+            st.session_state.uploading_pdf = False
           uploaded_pdf = st.file_uploader(
             f"📎 Rapport PDF de {student['nom']} {student['prenom']}",
             type=["pdf"], key=f"pdf_upload_{selected_num}")
           if uploaded_pdf:
-            if st.button("Enregistrer le PDF", type="primary", key="btn_save_pdf"):
+            st.session_state.uploading_pdf = True
+            # Stocker le PDF dans session_state pour éviter la perte au refresh
+            st.session_state[f"pdf_bytes_{selected_num}"] = bytes(uploaded_pdf.getbuffer())
+            st.session_state[f"pdf_name_{selected_num}"] = uploaded_pdf.name
+            if st.button("✅ Enregistrer le PDF", type="primary", key="btn_save_pdf", use_container_width=True):
               safe = f"{selected_num}_{student['nom']}_{student['prenom']}_{student['annee']}.pdf"
               safe = safe.replace(" ","_").replace("/","-")
-              pdf_bytes = bytes(uploaded_pdf.getbuffer())
+              pdf_bytes = st.session_state.get(f"pdf_bytes_{selected_num}", bytes(uploaded_pdf.getbuffer()))
               if _use_supabase():
-                _upload_pdf_supabase(pdf_bytes, safe)
+                success = _upload_pdf_supabase(pdf_bytes, safe)
+                if success:
+                  update_student(selected_num, {'pdf_filename': safe})
+                  st.success(f"✅ PDF remplacé avec succès pour {student['nom']} {student['prenom']} !")
+                  st.session_state.uploading_pdf = False
+                  st.session_state.pop(f"pdf_bytes_{selected_num}", None)
+                  st.rerun()
+                else:
+                  st.error("❌ Erreur lors de l'upload — réessayez")
               else:
                 from utils.data_manager import UPLOADS_DIR
                 os.makedirs(UPLOADS_DIR, exist_ok=True)
                 with open(get_pdf_path(safe), "wb") as _f:
                   _f.write(pdf_bytes)
-              update_student(selected_num, {'pdf_filename': safe})
-              st.success(f"PDF enregistré pour {student['nom']} {student['prenom']} !")
-              st.rerun()
+                update_student(selected_num, {'pdf_filename': safe})
+                st.success(f"✅ PDF remplacé avec succès pour {student['nom']} {student['prenom']} !")
+                st.session_state.uploading_pdf = False
+                st.rerun()
 
     # Ajout manuel
     st.markdown("---")
