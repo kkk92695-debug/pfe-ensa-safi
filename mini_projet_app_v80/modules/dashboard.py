@@ -154,10 +154,7 @@ def show_dashboard_page():
 
   st.markdown("")
 
-  # ── Autorefresh global — désactivé si upload PDF en cours ─────────────────
-  _chk = st.session_state.get("chk_replace_pdf", False)
-  if HAS_AUTOREFRESH and not _chk:
-    st_autorefresh(interval=10000, key="global_refresh")
+  # Pas de rafraîchissement automatique — bouton manuel dans chaque onglet
 
   # ── Load data — toujours recharger depuis Supabase ────────────────────────
   df = load_data()
@@ -456,6 +453,11 @@ def show_dashboard_page():
   # TAB 2 : IMPORT / EXPORT
   # =====================================================================
   with tab2:
+    st.session_state["active_tab"] = "import"
+    _c1, _c2 = st.columns([8, 2])
+    with _c2:
+      if st.button("Rafraichir", key="btn_refresh_tab2", use_container_width=True):
+        st.rerun()
     col_imp, col_exp = st.columns(2)
 
     with col_imp:
@@ -532,6 +534,10 @@ def show_dashboard_page():
   # =====================================================================
   with tab3:
     st.session_state["active_tab"] = "gestion"
+    _c1, _c2 = st.columns([8, 2])
+    with _c2:
+      if st.button("Rafraichir", key="btn_refresh_tab3", use_container_width=True):
+        st.rerun()
 
     st.markdown(f'<div style="font-size:1.05rem;font-weight:700;color:{text_main};margin-bottom:0.8rem;border-left:4px solid #2563eb;padding-left:10px;">Modifier / Mettre à jour un étudiant</div>', unsafe_allow_html=True)
 
@@ -810,6 +816,7 @@ document.getElementById('pdf_input').addEventListener('change', function(e) {{
   # =====================================================================
   if is_admin and tab4 is not None:
     with tab4:
+      st.session_state["active_tab"] = "comptes"
       from modules.login import load_accounts, add_account, delete_account, SUPER_ADMIN, save_allowed_excel, load_allowed_emails, is_email_allowed
       import io as _io
 
