@@ -1117,7 +1117,8 @@ document.getElementById('pdf_input').addEventListener('change', function(e) {{
             if not new_nom.strip():                  errs.append("Nom obligatoire.")
             if not email_lower.endswith("@uca.ac.ma"):       errs.append("Email doit se terminer par @uca.ac.ma.")
             if email_lower in accounts:               errs.append("Ce compte existe déjà.")
-            if not is_email_allowed(email_lower):          errs.append("Cet email n'est pas autorisé par la liste des utilisateurs autorisés.")
+            # Admin peut créer un compte sans liste autorisée
+            # (la vérification liste autorisée est seulement pour l'auto-inscription)
             if len(new_pwd) < 8:                   errs.append("Minimum 8 caractères.")
             if new_pwd != conf_pwd:                  errs.append("Mots de passe différents.")
             if errs:
