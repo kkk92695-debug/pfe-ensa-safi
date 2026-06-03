@@ -154,19 +154,13 @@ def show_dashboard_page():
 
   st.markdown("")
 
-  # ── Load data avec cache court (5s) pour éviter rechargement à chaque rerun ──
-  # Rafraîchissement auto géré dans tab1 uniquement
-  _cache_key = "df_cache"
-  _cache_time_key = "df_cache_time"
-  import time as _time2
-  _now = _time2.time()
-  _cache_age = _now - st.session_state.get(_cache_time_key, 0)
-  # Recharger seulement si cache > 5s OU si on vient de modifier (pas pendant upload)
-  _force_reload = _cache_age > 5 and not st.session_state.get("chk_replace_pdf", False)
-  if _force_reload or _cache_key not in st.session_state:
-    st.session_state[_cache_key] = load_data()
-    st.session_state[_cache_time_key] = _now
-  df = st.session_state[_cache_key]
+  # ── Autorefresh global — désactivé si upload PDF en cours ─────────────────
+  _chk = st.session_state.get("chk_replace_pdf", False)
+  if HAS_AUTOREFRESH and not _chk:
+    st_autorefresh(interval=10000, key="global_refresh")
+
+  # ── Load data ─────────────────────────────────────────────────────────────
+  df = load_data()
 
   # ── KPI METRICS ─────────────────────────────────────────────────────────
   total_etudiants = len(df)
@@ -263,12 +257,7 @@ def show_dashboard_page():
   # =====================================================================
   with tab1:
     st.session_state["active_tab"] = "liste"
-    # Autorefresh uniquement dans cet onglet — désactivé si on est dans Gestion
-    _in_gestion = st.session_state.get("active_tab", "liste") == "gestion"
-    if HAS_AUTOREFRESH and not _in_gestion:
-      st_autorefresh(interval=10000, key="data_refresh_liste")
     if st.button("Rafraichir la liste", key="btn_refresh_liste"):
-      st.session_state.pop("df_cache", None)
       st.rerun()
 
     if df.empty:
