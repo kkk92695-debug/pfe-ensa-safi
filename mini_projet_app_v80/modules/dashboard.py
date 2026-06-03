@@ -263,8 +263,10 @@ def show_dashboard_page():
   # =====================================================================
   with tab1:
     st.session_state["active_tab"] = "liste"
-    # Autorefresh uniquement dans cet onglet
-    # Bouton rafraichir manuel dans liste
+    # Autorefresh uniquement dans cet onglet — désactivé si on est dans Gestion
+    _in_gestion = st.session_state.get("active_tab", "liste") == "gestion"
+    if HAS_AUTOREFRESH and not _in_gestion:
+      st_autorefresh(interval=10000, key="data_refresh_liste")
     if st.button("Rafraichir la liste", key="btn_refresh_liste"):
       st.session_state.pop("df_cache", None)
       st.rerun()
