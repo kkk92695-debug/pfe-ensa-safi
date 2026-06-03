@@ -641,7 +641,7 @@ def show_dashboard_page():
             _upload_url = f"{_get_supabase_url()}/storage/v1/object/{STORAGE_BUCKET}/{_safe_name}"
             _anon_key = _get_supabase_key()
 
-            # Upload direct vers Supabase via JavaScript
+            # Upload direct vers Supabase via JavaScript avec XMLHttpRequest (supporte gros fichiers)
             _upload_result = st.components.v1.html(f"""
 <div id="upload_zone" style="border:2px dashed #2563eb;border-radius:10px;padding:20px;text-align:center;background:#f0f7ff;margin:10px 0;">
   <p style="color:#1d4ed8;font-weight:600;margin-bottom:10px;">Cliquez pour choisir un PDF</p>
@@ -656,40 +656,51 @@ def show_dashboard_page():
   </div>
 </div>
 <script>
-document.getElementById('pdf_input').addEventListener('change', async function(e) {{
+document.getElementById('pdf_input').addEventListener('change', function(e) {{
   const file = e.target.files[0];
   if (!file) return;
   
-  document.getElementById('status').innerHTML = 'Chargement: ' + file.name;
-  document.getElementById('progress').style.display = 'block';
-  document.getElementById('progress_bar').style.width = '20%';
+  const statusEl = document.getElementById('status');
+  const progressEl = document.getElementById('progress');
+  const progressBar = document.getElementById('progress_bar');
+  const zone = document.getElementById('upload_zone');
   
-  try {{
-    const response = await fetch('{_upload_url}', {{
-      method: 'POST',
-      headers: {{
-        'apikey': '{_anon_key}',
-        'Authorization': 'Bearer {_anon_key}',
-        'Content-Type': 'application/pdf',
-        'x-upsert': 'true'
-      }},
-      body: file
-    }});
-    
-    document.getElementById('progress_bar').style.width = '100%';
-    
-    if (response.ok || response.status === 200 || response.status === 201) {{
-      document.getElementById('status').innerHTML = '<span style="color:#15803d;font-weight:600;">PDF uploadé avec succès ! Cliquez Mettre à jour</span>';
-      document.getElementById('upload_zone').style.borderColor = '#86efac';
-      document.getElementById('upload_zone').style.background = '#f0fdf4';
-      // Notifier Streamlit que l'upload est fait
-      window.parent.postMessage({{type: 'streamlit:setComponentValue', value: '{_safe_name}'}}, '*');
-    }} else {{
-      document.getElementById('status').innerHTML = '<span style="color:#dc2626;">Erreur: ' + response.status + '</span>';
+  statusEl.innerHTML = 'Envoi en cours: ' + file.name + ' (' + (file.size/1024/1024).toFixed(1) + ' MB)';
+  progressEl.style.display = 'block';
+  progressBar.style.width = '5%';
+  
+  const xhr = new XMLHttpRequest();
+  
+  xhr.upload.addEventListener('progress', function(e) {{
+    if (e.lengthComputable) {{
+      const pct = Math.round(e.loaded / e.total * 100);
+      progressBar.style.width = pct + '%';
+      statusEl.innerHTML = 'Envoi: ' + pct + '% — ' + file.name;
     }}
-  }} catch(err) {{
-    document.getElementById('status').innerHTML = '<span style="color:#dc2626;">Erreur: ' + err.message + '</span>';
-  }}
+  }});
+  
+  xhr.addEventListener('load', function() {{
+    if (xhr.status === 200 || xhr.status === 201) {{
+      progressBar.style.width = '100%';
+      statusEl.innerHTML = '<span style="color:#15803d;font-weight:600;">PDF uploadé avec succès ! Cliquez Mettre à jour</span>';
+      zone.style.borderColor = '#86efac';
+      zone.style.background = '#f0fdf4';
+    }} else {{
+      statusEl.innerHTML = '<span style="color:#dc2626;">Erreur ' + xhr.status + ': ' + xhr.responseText + '</span>';
+    }}
+  }});
+  
+  xhr.addEventListener('error', function() {{
+    statusEl.innerHTML = '<span style="color:#dc2626;">Erreur réseau — réessayez</span>';
+  }});
+  
+  xhr.open('POST', '{_upload_url}');
+  xhr.setRequestHeader('apikey', '{_anon_key}');
+  xhr.setRequestHeader('Authorization', 'Bearer {_anon_key}');
+  xhr.setRequestHeader('Content-Type', 'application/pdf');
+  xhr.setRequestHeader('x-upsert', 'true');
+  xhr.timeout = 300000; // 5 minutes
+  xhr.send(file);
 }});
 </script>
 """, height=160)
@@ -715,11 +726,10 @@ document.getElementById('pdf_input').addEventListener('change', async function(e
               'email': new_email.strip(),
               'filiere': new_filiere,
             }
-            # PDF déjà uploadé directement vers Supabase via JS
-            _uploaded_key = f"pdf_uploaded_{selected_num}"
-            if _uploaded_key in st.session_state:
-              updates['pdf_filename'] = st.session_state[_uploaded_key]
-              st.session_state.pop(_uploaded_key, None)
+            # Ajouter le PDF si uploadé via JS
+            _up_key = f"pdf_uploaded_{selected_num}"
+            if _up_key in st.session_state:
+              updates['pdf_filename'] = st.session_state.pop(_up_key)
             update_student(selected_num, updates)
             st.success("Etudiant mis à jour ! Visible chez tous dans 5 secondes.")
             st.rerun()
