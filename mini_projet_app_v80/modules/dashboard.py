@@ -630,13 +630,19 @@ def show_dashboard_page():
 
           if pdf_exists:
             st.markdown(f'<div style="background:{"#0d2b1a" if dark else "#f0fdf4"};border:1px solid #86efac;border-radius:8px;padding:10px 14px;margin-bottom:10px;"><b style="color:#15803d;">PDF présent : {current_pdf}</b></div>', unsafe_allow_html=True)
-            replace_pdf = st.checkbox("Remplacer le PDF existant par un nouveau")
           else:
             st.markdown(f'<div style="background:{"#2b2300" if dark else "#fef9c3"};border:1px solid #fde047;border-radius:8px;padding:10px 14px;margin-bottom:10px;"><b style="color:#92400e;">Aucun PDF pour cet étudiant</b></div>', unsafe_allow_html=True)
-            replace_pdf = True
 
-          uploaded_pdf = None
-          if replace_pdf:
+          # Submit button
+          submitted = st.form_submit_button("Mettre à jour", type="primary", use_container_width=True)
+
+        # ── Section PDF EN DEHORS du form ─────────────────────────────────────
+        st.markdown("---")
+        replace_pdf = pdf_exists == False  # True si pas de PDF
+        if pdf_exists:
+          replace_pdf = st.checkbox("Remplacer le PDF existant par un nouveau", key="chk_replace_pdf")
+
+        if replace_pdf:
             from utils.data_manager import _get_supabase_url, _get_supabase_key, STORAGE_BUCKET
             _safe_name = f"{selected_num}_{student['nom']}_{student['prenom']}_{student['annee']}.pdf"
             _safe_name = _safe_name.replace(" ","_").replace("/","-")
@@ -710,31 +716,26 @@ document.getElementById('pdf_input').addEventListener('change', function(e) {{
             if f"pdf_uploaded_{selected_num}" not in st.session_state:
               st.session_state[f"pdf_uploaded_{selected_num}"] = _safe_name
 
-          # ── Submit button ─────────────────────────────────────────────────
-          col_upd, col_del_placeholder = st.columns(2)
-          with col_upd:
-            submitted = st.form_submit_button("Mettre à jour", type="primary", use_container_width=True)
-
-          if submitted:
-            updates = {
-              'correction': new_correction,
-              'nb_copies_bibliotheque': new_copies,
-              'encadrant': new_encadrant,
-              'co_encadrant': new_co_enc,
-              'lieu_stage': new_lieu,
-              'intitule_rapport': new_intitule,
-              'nom': new_nom.strip().upper(),
-              'prenom': new_prenom.strip(),
-              'email': new_email.strip(),
-              'filiere': new_filiere,
-            }
-            # Ajouter le PDF si uploadé via JS
-            _up_key = f"pdf_uploaded_{selected_num}"
-            if _up_key in st.session_state:
-              updates['pdf_filename'] = st.session_state.pop(_up_key)
-            update_student(selected_num, updates)
-            st.success("Etudiant mis à jour ! Visible chez tous dans 5 secondes.")
-            st.rerun()
+        if submitted:
+          updates = {
+            'correction': new_correction,
+            'nb_copies_bibliotheque': new_copies,
+            'encadrant': new_encadrant,
+            'co_encadrant': new_co_enc,
+            'lieu_stage': new_lieu,
+            'intitule_rapport': new_intitule,
+            'nom': new_nom.strip().upper(),
+            'prenom': new_prenom.strip(),
+            'email': new_email.strip(),
+            'filiere': new_filiere,
+          }
+          # Ajouter le PDF si uploadé via JS
+          _up_key = f"pdf_uploaded_{selected_num}"
+          if _up_key in st.session_state:
+            updates['pdf_filename'] = st.session_state.pop(_up_key)
+          update_student(selected_num, updates)
+          st.success("Etudiant mis à jour ! Visible chez tous dans 5 secondes.")
+          st.rerun()
         # Bouton suppression EN DEHORS du form
         if can_delete_student:
           if st.button("Supprimer cet étudiant", type="secondary", use_container_width=True, key="btn_delete_student"):
