@@ -443,7 +443,7 @@ def show_dashboard_page():
                   <div style="font-size:0.78rem;font-weight:600;color:#2563eb;margin-bottom:6px;">
                     Rapport de {nom_etud} — {row["filiere"]} {row["annee"]}
                   </div>
-                  <iframe src="https://mozilla.github.io/pdf.js/web/viewer.html?file={pdf_src}"
+                  <iframe src="{pdf_src}"
                     width="100%" height="650px"
                     style="border:1.5px solid #cbd5e1;border-radius:8px;background:#fff;">
                   </iframe>
@@ -635,8 +635,7 @@ def show_dashboard_page():
 
         if replace_pdf:
             from utils.data_manager import _get_supabase_url, _get_supabase_key, STORAGE_BUCKET
-            _safe_name = f"{selected_num}_{student['nom']}_{student['prenom']}_{student['annee']}.pdf"
-            _safe_name = _safe_name.replace(" ","_").replace("/","-")
+            _safe_name = f"{selected_num}.pdf"
             _upload_url = f"{_get_supabase_url()}/storage/v1/object/{STORAGE_BUCKET}/{_safe_name}"
             _anon_key = _get_supabase_key()
 
