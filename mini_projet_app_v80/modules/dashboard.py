@@ -264,8 +264,10 @@ def show_dashboard_page():
   with tab1:
     st.session_state["active_tab"] = "liste"
     # Autorefresh uniquement dans cet onglet
-    if HAS_AUTOREFRESH:
-      st_autorefresh(interval=5000, key="data_refresh_liste")
+    # Bouton rafraichir manuel dans liste
+    if st.button("Rafraichir la liste", key="btn_refresh_liste"):
+      st.session_state.pop("df_cache", None)
+      st.rerun()
 
     if df.empty:
       st.info("Aucun rapport soumis pour le moment.")
