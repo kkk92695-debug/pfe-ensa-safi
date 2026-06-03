@@ -1,562 +1,1129 @@
 import streamlit as st
-import hashlib, json, os, base64, random, string, time
 import pandas as pd
+import os
+try:
+    from streamlit_autorefresh import st_autorefresh
+    HAS_AUTOREFRESH = True
+except ImportError:
+    HAS_AUTOREFRESH = False
+import hashlib
+from utils.data_manager import (
+  load_data, save_data, get_pdf_path,
+  update_student, delete_student, import_from_excel, clear_all_students
+)
 
-_BASE        = os.path.dirname(os.path.dirname(__file__))
-ACCOUNTS_FILE= os.path.join(_BASE, "data", "accounts.json")
-ALLOWED_FILE = os.path.join(_BASE, "data", "utilisateurs_autorises.xlsx")
-TOKENS_FILE  = os.path.join(_BASE, "data", "reset_tokens.json")
-ASSETS_DIR   = os.path.join(_BASE, "assets")
+# ── URL Google Apps Script (à configurer après déploiement) ──────
+# Collez ici l'URL obtenue après déploiement du script Google Apps Script
+# Exemple : "https://script.google.com/macros/s/AKfycbx.../exec"
+GOOGLE_SHEET_URL = "VOTRE_URL_APPS_SCRIPT_ICI"
 
-SUPER_ADMIN  = "admin@uca.ac.ma"
-MAX_ATTEMPTS = 5
-TOKEN_EXPIRY  = 15 * 60  # 15 minutes en secondes
+# ── URL du formulaire hébergé en ligne ───────────────────────────
+# Collez ici l'URL du formulaire HTML hébergé (GitHub Pages, Netlify, etc.)
+FORMULAIRE_ONLINE_URL = "VOTRE_URL_FORMULAIRE_ICI"
 
-DEFAULT_ACCOUNTS = {
-    "admin@uca.ac.ma": {
-        "hash": hashlib.sha256("Admin@ENSA2025".encode()).hexdigest(),
-        "role": "Administration", "nom": "Administrateur"
-    },
-}
+# ── Configuration API locale ────────────────────────────────────
+API_LOCAL_PORT = 5050
+API_LOCAL_URL = f"http://localhost:{API_LOCAL_PORT}"
+FORMULAIRE_LOCAL_URL = f"{API_LOCAL_URL}/"
 
-# ── Helpers comptes ─────────────────────────────────────────────────────────
-def _ensure_data():
-    os.makedirs(os.path.join(_BASE, "data"), exist_ok=True)
-    if not os.path.exists(ACCOUNTS_FILE):
-        with open(ACCOUNTS_FILE, "w", encoding="utf-8") as f:
-            json.dump(DEFAULT_ACCOUNTS, f, ensure_ascii=False, indent=2)
+def load_data_from_sheets():
+  """Charge les données depuis Google Sheets via Apps Script."""
+  if GOOGLE_SHEET_URL == "VOTRE_URL_APPS_SCRIPT_ICI":
+    return None # Pas encore configuré, utiliser CSV local
+  try:
+    import urllib.request, json as _json
+    req = urllib.request.urlopen(GOOGLE_SHEET_URL, timeout=5)
+    data = _json.loads(req.read().decode())
+    if data.get("ok") and data.get("data"):
+      return pd.DataFrame(data["data"])
+    return None
+  except Exception:
+    return None
 
-def load_accounts():
-    _ensure_data()
-    with open(ACCOUNTS_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+def load_data_combined():
+  """Charge les données depuis Google Sheets si configuré, sinon depuis le CSV local."""
+  if GOOGLE_SHEET_URL != "VOTRE_URL_APPS_SCRIPT_ICI":
+    df_sheets = load_data_from_sheets()
+    if df_sheets is not None and not df_sheets.empty:
+      return df_sheets
+  return load_data()
 
-def save_accounts(accounts):
-    _ensure_data()
-    with open(ACCOUNTS_FILE, "w", encoding="utf-8") as f:
-        json.dump(accounts, f, ensure_ascii=False, indent=2)
 
-def add_account(email, password, role, nom):
-    accounts = load_accounts()
-    accounts[email.lower().strip()] = {
-        "hash": hashlib.sha256(password.encode()).hexdigest(),
-        "role": role, "nom": nom
-    }
-    save_accounts(accounts)
+def check_api_status():
+  """Vérifie si l'API locale est accessible."""
+  try:
+    import urllib.request
+    req = urllib.request.urlopen(f"{API_LOCAL_URL}/api/stats", timeout=2)
+    return req.getcode() == 200
+  except:
+    return False # Fallback CSV local
 
-def delete_account(email):
-    accounts = load_accounts()
-    accounts.pop(email.lower().strip(), None)
-    save_accounts(accounts)
 
-def account_exists(email):
-    return email.lower().strip() in load_accounts()
+def _card(content, bg="#ffffff", border="#e2e8f0"):
+  dark = st.session_state.get("dark_mode", False)
+  if dark:
+    bg = "#1e2130"
+    border = "#2d3748"
+  st.markdown(
+    f'<div style="background:{bg};border:1px solid {border};border-radius:12px;'
+    f'padding:1.2rem 1.4rem;margin-bottom:1rem;box-shadow:0 1px 4px rgba(0,0,0,0.06);">'
+    f'{content}</div>', unsafe_allow_html=True)
 
-def check_password(email, password):
-    accounts = load_accounts()
-    h = hashlib.sha256(password.encode()).hexdigest()
-    return email in accounts and accounts[email]["hash"] == h
 
-# ── Helpers liste autorisée ─────────────────────────────────────────────────
-def load_allowed_emails():
-    if not os.path.exists(ALLOWED_FILE):
-        return {SUPER_ADMIN: {"nom": "Administrateur", "role": "Administration"}}
-    try:
-        df = pd.read_excel(ALLOWED_FILE, engine="openpyxl")
-        df.columns = [c.strip() for c in df.columns]
-        col_map = {
-            "Email":"email","email":"email","EMAIL":"email",
-            "Nom":"nom","NOM":"nom","nom":"nom",
-            "Rôle":"role","Role":"role","ROLE":"role","role":"role",
-        }
-        df = df.rename(columns=col_map)
-        result = {}
-        for _, row in df.iterrows():
-            email = str(row.get("email","")).strip().lower()
-            if email and "@uca.ac.ma" in email:
-                result[email] = {
-                    "nom":  str(row.get("nom","")).strip(),
-                    "role": str(row.get("role","Professeur")).strip(),
-                }
-        if SUPER_ADMIN not in result:
-            result[SUPER_ADMIN] = {"nom": "Administrateur", "role": "Administration"}
-        return result
-    except Exception:
-        return {SUPER_ADMIN: {"nom": "Administrateur", "role": "Administration"}}
+def show_dashboard_page():
+  if not st.session_state.get("logged_in"):
+    st.session_state.page = "login"
+    st.rerun()
 
-def save_allowed_excel(df_allowed):
-    os.makedirs(os.path.join(_BASE, "data"), exist_ok=True)
-    df_allowed.to_excel(ALLOWED_FILE, index=False, engine="openpyxl")
+  # ── Auto-refresh toutes les 30 secondes sans déconnexion ──────────────
+  import time as _time
+  if "last_refresh" not in st.session_state:
+    st.session_state.last_refresh = _time.time()
+  if _time.time() - st.session_state.last_refresh > 30:
+    st.session_state.last_refresh = _time.time()
+    st.rerun()
 
-def is_email_allowed(email):
-    return email.lower().strip() in load_allowed_emails()
+  dark   = st.session_state.get("dark_mode", False)
+  role   = st.session_state.get("role", "Professeur")
+  username = st.session_state.get("username", "")
+  nom_user = st.session_state.get("nom_user", username)
+  is_admin  = (role == "Administration")
+  is_prof   = (role == "Professeur")
+  is_secret = (role == "Secrétaire")
+  is_biblio = (role == "Responsable Bibliothèque")
 
-def get_allowed_info(email):
-    return load_allowed_emails().get(email.lower().strip(), {})
+  # ── Permissions par rôle (selon tableau BF-D05 à BF-D13) ────────────────
+  # BF-D05 : Remplacement PDF → tous les rôles
+  can_replace_pdf     = True
+  # BF-D06 : Modification étudiant → Admin, Prof, Sec, Biblio (tous)
+  can_edit_student    = True
+  # BF-D07 : Ajout étudiant → Admin, Prof, Sec, Biblio (tous)
+  can_add_student     = True
+  # BF-D08 : Suppression étudiant → Admin uniquement
+  can_delete_student  = is_admin
+  # BF-D09 : Modification "Correction" → Admin, Prof (pas Secrétaire)
+  can_edit_correction = is_admin or is_prof
+  # BF-D10 : Modification "Copies Biblio" → Admin, Biblio (pas Secrétaire)
+  can_edit_copies     = is_admin or is_biblio
+  # Secrétaire peut modifier les autres champs étudiant
+  can_edit_student_fields = True
+  # BF-D11/D12/D13 : Import/Export → tous
+  can_import          = True
+  can_export          = True
 
-# ── Helpers tokens reset ────────────────────────────────────────────────────
-def _load_tokens():
-    if not os.path.exists(TOKENS_FILE):
-        return {}
-    with open(TOKENS_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+  # ── Colors ──────────────────────────────────────────────────────────────
+  bg_page  = "#0f1117" if dark else "#f0f4f8"
+  bg_card  = "#1e2130" if dark else "#ffffff"
+  border_c  = "#2d3748" if dark else "#e2e8f0"
+  text_main = "#e2e8f0" if dark else "#0f2557"
+  text_sub  = "#94a3b8" if dark else "#6b7280"
 
-def _save_tokens(tokens):
-    os.makedirs(os.path.join(_BASE, "data"), exist_ok=True)
-    with open(TOKENS_FILE, "w", encoding="utf-8") as f:
-        json.dump(tokens, f)
+  # ── HEADER ──────────────────────────────────────────────────────────────
+  import base64, os as _os
+  _logo_path = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), "assets", "logo_ensa.jpg")
+  _logo_html = ""
+  if _os.path.exists(_logo_path):
+    with open(_logo_path, "rb") as _f:
+      _b64 = base64.b64encode(_f.read()).decode()
+    _logo_html = f'<img src="data:image/jpeg;base64,{_b64}" style="height:44px;border-radius:8px;margin-right:14px;" />'
 
-def generate_reset_token(email):
-    """Génère un code 6 chiffres + l'enregistre avec expiration 15 min."""
-    code = "".join(random.choices(string.digits, k=6))
-    tokens = _load_tokens()
-    tokens[email.lower()] = {
-        "code":    code,
-        "expires": time.time() + TOKEN_EXPIRY,
-        "used":    False
-    }
-    _save_tokens(tokens)
-    return code
+  col_h1, col_h2 = st.columns([5, 1])
+  with col_h1:
+    st.markdown(
+      f'<div style="background:linear-gradient(135deg,#0f2557,#1a56a0 55%,#2563eb);'
+      f'padding:1rem 1.4rem;border-radius:14px;color:white;'
+      f'display:flex;align-items:center;box-shadow:0 4px 20px rgba(26,86,160,0.3);">'
+      f'{_logo_html}'
+      f'<div style="color:white;">'
+      f'<div style="font-size:0.68rem;font-weight:600;opacity:0.75;letter-spacing:0.12em;text-transform:uppercase;color:#ffffff;-webkit-text-fill-color:#ffffff;">ENSA Safi — Université Cadi Ayyad</div>'
+      f'<div style="font-size:1.05rem;font-weight:700;margin:2px 0;color:white;">Tableau de Bord — {role}</div>'
+      f'<div style="font-size:0.78rem;opacity:0.9;color:#ffffff;-webkit-text-fill-color:#ffffff;">Connecté : <b style="color:#ffffff;-webkit-text-fill-color:#ffffff;">{nom_user}</b> &nbsp;·&nbsp; {username}</div>'
+      f'</div></div>', unsafe_allow_html=True)
 
-def verify_reset_token(email, code):
-    """Vérifie le code. Retourne True si valide et non expiré."""
-    tokens = _load_tokens()
-    entry  = tokens.get(email.lower())
-    if not entry:
-        return False, "Code introuvable."
-    if entry["used"]:
-        return False, "Ce code a déjà été utilisé."
-    if time.time() > entry["expires"]:
-        return False, "Code expiré (15 min). Demandez-en un nouveau."
-    if entry["code"] != code.strip():
-        return False, "Code incorrect."
-    return True, "OK"
+  with col_h2:
+    st.markdown("<br>", unsafe_allow_html=True)
+    # Dark/Light toggle
+    mode_label = "Mode clair" if dark else "Mode sombre"
+    if st.button(mode_label, use_container_width=True, key="btn_toggle_theme"):
+      st.session_state.dark_mode = not dark
+      st.rerun()
+    if st.button("Déconnexion", type="secondary", use_container_width=True, key="btn_deconnexion"):
+      for k in ["logged_in", "username", "role", "nom_user", "page"]:
+        st.session_state.pop(k, None)
+      st.rerun()
 
-def invalidate_token(email):
-    """Invalide le token après usage."""
-    tokens = _load_tokens()
-    if email.lower() in tokens:
-        tokens[email.lower()]["used"] = True
-        _save_tokens(tokens)
+  st.markdown("")
 
-def apply_new_password(email, new_password):
-    """Change le mot de passe dans accounts.json."""
-    accounts = load_accounts()
-    if email in accounts:
-        accounts[email]["hash"] = hashlib.sha256(new_password.encode()).hexdigest()
-        save_accounts(accounts)
-        return True
-    return False
+  # Pas de rafraîchissement automatique — bouton manuel dans chaque onglet
 
-# ── Image helper ────────────────────────────────────────────────────────────
-def _img_b64(path):
-    try:
-        with open(path, "rb") as f:
-            return base64.b64encode(f.read()).decode()
-    except Exception:
-        return None
+  # ── Load data — toujours recharger depuis Supabase ────────────────────────
+  df = load_data()
+  # Forcer la mise à jour du session_state pour tous les rôles
+  st.session_state["df_last_load"] = pd.Timestamp.now().isoformat()
 
-# ── CSS commun login ─────────────────────────────────────────────────────────
-def _inject_css(bg_b64):
-    bg_css = (
-        f'.stApp{{background-image:url("data:image/png;base64,{bg_b64}");'
-        'background-size:cover;background-position:center;background-attachment:fixed;}}'
-        '.stApp::before{content:"";position:fixed;inset:0;background:rgba(10,25,60,0.72);z-index:0;}'
-        '.stApp > *{position:relative;z-index:1;}'
-    ) if bg_b64 else ".stApp{background:linear-gradient(135deg,#0f2557,#1a3a6b);}"
+  # ── KPI METRICS ─────────────────────────────────────────────────────────
+  total_etudiants = len(df)
+  nb_filieres   = df['filiere'].nunique() if not df.empty else 0
+  nb_rapports_pdf = (
+    int(df['pdf_filename'].apply(
+      lambda x: bool(isinstance(x, str) and x.strip() not in ('', 'nan', 'None', 'NaN'))
+    ).sum()) if not df.empty else 0
+  )
+  nb_corriges = len(df[df['correction'] == 'Oui']) if not df.empty else 0
+  nb_non_corr = len(df[df['correction'] == 'Non']) if not df.empty else 0
 
-    st.markdown(f"""
-    <style>
-    {bg_css}
-    #MainMenu,footer,header{{visibility:hidden;}}
-    .login-card .stTextInput input{{
-        background:#ffffff!important;
-        border:1.5px solid #cbd5e1!important;
-        border-radius:10px!important;color:#0f172a!important;font-size:0.92rem!important;
-    }}
-    .stTextInput input{{
-        background:#ffffff!important;
-        border:1.5px solid #cbd5e1!important;
-        border-radius:10px!important;color:#0f172a!important;font-size:0.92rem!important;
-    }}
-    .stTextInput input:focus{{border-color:#2563eb!important;background:#ffffff!important;box-shadow:0 0 0 3px rgba(37,99,235,0.12)!important;}}
-    .stTextInput input::placeholder{{color:#94a3b8!important;}}
-    .stTextInput label{{color:#1e293b!important;font-size:0.85rem!important;font-weight:700!important;}}
-    .stSelectbox label{{color:#1e293b!important;font-size:0.85rem!important;font-weight:700!important;}}
-    .stButton>button[kind="primary"]{{
-        background:linear-gradient(135deg,#2563eb,#1d4ed8)!important;border:none!important;
-        border-radius:10px!important;font-weight:700!important;padding:0.68rem!important;
-        box-shadow:0 4px 18px rgba(37,99,235,0.45)!important;letter-spacing:0.03em!important;
-        color:white!important;
-    }}
-    .stButton>button[kind="secondary"]{{
-        background:rgba(255,255,255,0.95)!important;
-        border:1.5px solid #cbd5e1!important;
-        border-radius:10px!important;
-        color:#1e293b!important;
-        font-size:0.85rem!important;
-        font-weight:600!important;
-        box-shadow:0 2px 8px rgba(0,0,0,0.08)!important;
-    }}
-    .stButton>button[kind="secondary"]:hover{{
-        background:#ffffff!important;
-        border-color:#2563eb!important;
-        color:#2563eb!important;
-        transform:translateY(-1px)!important;
-    }}
-    </style>""", unsafe_allow_html=True)
+  m_bg = "#1e2130" if dark else "#ffffff"
+  m_border = "#2d3748" if dark else "#e2e8f0"
+  m_val_color = "#60a5fa" if dark else "#1a56a0"
+  m_lbl_color = "#94a3b8" if dark else "#6b7280"
 
-def _card_header(logo_html, subtitle="Espace Encadrants &amp; Administration"):
-    html = (
-        '<div style="background:#ffffff;border-radius:20px;'
-        'padding:2rem 2rem 1.6rem;margin-top:3vh;'
-        'box-shadow:0 24px 64px rgba(0,0,0,0.35);border:1px solid rgba(255,255,255,0.6);">'
-        '<div style="text-align:center;margin-bottom:1.4rem;">'
-        + logo_html +
-        '<div style="color:#0f2557;font-size:1.05rem;font-weight:700;line-height:1.3;margin-top:8px;">'
-        'École Nationale des Sciences Appliquées<br>'
-        '<span style="color:#64748b;font-size:0.82rem;font-weight:400;">'
-        'Safi — Université Cadi Ayyad</span></div>'
-        '<div style="width:40px;height:3px;background:linear-gradient(90deg,#2563eb,#60a5fa);'
-        'border-radius:2px;margin:10px auto;"></div>'
-        f'<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;'
-        f'padding:6px 14px;display:inline-block;color:#1d4ed8;font-size:0.85rem;font-weight:700;">'
-        f'🔐 {subtitle}</div>'
-        '</div>'
-    )
-    st.markdown(html, unsafe_allow_html=True)
+  def metric_card(label, value, col):
+    col.markdown(
+      f'<div style="background:{m_bg};border:1px solid {m_border};border-radius:12px;'
+      f'padding:1rem 1.2rem;text-align:center;box-shadow:0 1px 6px rgba(0,0,0,0.07);">'
+      f'<div style="font-size:1.8rem;font-weight:800;color:{m_val_color};">{value}</div>'
+      f'<div style="font-size:0.75rem;font-weight:600;color:{m_lbl_color};text-transform:uppercase;letter-spacing:0.06em;margin-top:2px;">{label}</div>'
+      f'</div>', unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════════════════════════════════════
-# PAGE PRINCIPALE — dispatch selon auth_mode
-# ══════════════════════════════════════════════════════════════════════════════
-def show_login_page():
-    bg_b64   = _img_b64(os.path.join(ASSETS_DIR, "ensas_bg.png"))
-    logo_b64 = _img_b64(os.path.join(ASSETS_DIR, "logo_ensa.jpg"))
-    logo_html = (
-        f'<img src="data:image/jpeg;base64,{logo_b64}" '
-        'style="height:55px;margin-bottom:10px;border-radius:8px;" />'
-    ) if logo_b64 else '<div style="font-size:2.5rem;margin-bottom:10px;">🎓</div>'
+  c1,c2,c3,c4,c5 = st.columns(5)
+  metric_card("Étudiants", total_etudiants, c1)
+  metric_card("Filières", nb_filieres, c2)
+  metric_card("Rapports PDF", nb_rapports_pdf, c3)
+  metric_card("Corrigés", nb_corriges, c4)
+  metric_card("Non corrigés", nb_non_corr, c5)
 
-    _inject_css(bg_b64)
+  st.markdown("")
 
-    if "login_attempts" not in st.session_state:
-        st.session_state.login_attempts = 0
-    if "auth_mode" not in st.session_state:
-        st.session_state.auth_mode = "login"
-    if "reset_email" not in st.session_state:
-        st.session_state.reset_email = ""
-    if "reset_step" not in st.session_state:
-        st.session_state.reset_step = 1  # 1=email, 2=code, 3=nouveau mdp
+  # ── LIEN FORMULAIRE ÉTUDIANT ─────────────────────────────────────────────
+  # Le formulaire étudiant est intégré dans la même app Streamlit,
+  # accessible via le paramètre URL ?page=etudiant (même port, même serveur)
+  try:
+    _base_url = st.context.headers.get("host", "localhost:8501")
+    _proto  = "https" if "ngrok" in _base_url or ".streamlit.app" in _base_url else "http"
+    _formulaire_url = f"{_proto}://{_base_url}/?page=etudiant"
+  except Exception:
+    _formulaire_url = "http://localhost:8501/?page=etudiant"
 
-    mode = st.session_state.auth_mode
-    _, mid, _ = st.columns([1, 1.4, 1])
-    with mid:
-        if mode == "login":
-            _page_login(logo_html)
-        elif mode == "register":
-            _page_register(logo_html)
-        elif mode == "forgot":
-            _page_forgot(logo_html)
+  _lien_bg = "#1a2744" if dark else "#eff6ff"
+  _lien_brd = "#2d3748" if dark else "#bfdbfe"
+  _lien_txt = "#e2e8f0" if dark else "#1e40af"
+  _lien_sub = "#94a3b8" if dark else "#3b82f6"
+  _inp_bg  = "#0f1117" if dark else "#ffffff"
+  _inp_brd = "#374151" if dark else "#bfdbfe"
+  _inp_col = "#e2e8f0" if dark else "#1e40af"
 
-# ══════════════════════════════════════════════════════════════════════════════
-# PAGE : CONNEXION
-# ══════════════════════════════════════════════════════════════════════════════
-def _page_login(logo_html):
-    _card_header(logo_html, "Connexion — Espace Encadrants")
+  st.markdown(
+    f'<div style="background:{_lien_bg};border:1.5px solid {_lien_brd};border-radius:14px;'
+    f'padding:1rem 1.4rem;margin-bottom:1rem;">'
+    f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">'
+    f''
+    f'<div>'
+    f'<div style="font-size:0.88rem;font-weight:700;color:{_lien_txt};">'
+    f'Lien du formulaire étudiant</div>'
+    f'<div style="font-size:0.74rem;color:{_lien_sub};">'
+    f'Partagez ce lien aux étudiants — ils déposent leur rapport sans compte</div>'
+    f'</div>'
+    f'<span style="margin-left:auto;font-size:0.72rem;font-weight:700;color:#16a34a;">🟢 Toujours actif</span>'
+    f'</div>'
+    f'<div style="display:flex;gap:8px;align-items:center;">'
+    f'<input type="text" value="{_formulaire_url}" readonly '
+    f'style="flex:1;padding:8px 12px;border:1.5px solid {_inp_brd};border-radius:8px;'
+    f'background:{_inp_bg};color:{_inp_col};font-size:0.85rem;font-family:monospace;outline:none;" />'
+    f'<a href="{_formulaire_url}" target="_blank" '
+    f'style="padding:8px 16px;background:#1d4ed8;border-radius:8px;'
+    f'color:white;font-size:0.82rem;font-weight:600;text-decoration:none;white-space:nowrap;">'
+    f'🔗 Ouvrir</a>'
+    f'</div>'
 
-    # Blocage tentatives
-    if st.session_state.login_attempts >= MAX_ATTEMPTS:
-        st.markdown("""
-        <div style="background:rgba(239,68,68,0.18);border:1px solid rgba(239,68,68,0.4);
-                    border-radius:10px;padding:10px 14px;color:#fca5a5;text-align:center;margin-bottom:1rem;">
-            🔒 Accès bloqué. Contactez l'administrateur.
-        </div>""", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
-        return
+    f'</div>',
+    unsafe_allow_html=True
+  )
 
-    # Indicateur tentatives
-    if st.session_state.login_attempts > 0:
-        dots = "".join([
-            f'<div style="width:10px;height:10px;border-radius:50%;'
-            f'background:{"#ef4444" if i < st.session_state.login_attempts else "rgba(255,255,255,0.2)"};"></div>'
-            for i in range(MAX_ATTEMPTS)
-        ])
-        remaining = MAX_ATTEMPTS - st.session_state.login_attempts
-        st.markdown(
-            f'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">'
-            f'<div style="display:flex;gap:5px;">{dots}</div>'
-            f'<span style="color:rgba(255,255,255,0.5);font-size:11px;">{remaining} tentative(s) restante(s)</span>'
+  st.markdown("---")
+
+  # ── TABS ────────────────────────────────────────────────────────────────
+  tabs_labels = ["Liste des Étudiants", "Import / Export", "Gestion"]
+  if is_admin:
+    tabs_labels.append("Comptes Accès")
+  all_tabs = st.tabs(tabs_labels)
+  tab1 = all_tabs[0]
+  tab2 = all_tabs[1]
+  tab3 = all_tabs[2]
+  tab4 = all_tabs[3] if is_admin else None
+
+  # =====================================================================
+  # TAB 1 : LISTE
+  # =====================================================================
+  with tab1:
+    st.session_state["active_tab"] = "liste"
+    _col_title, _col_refresh = st.columns([8, 2])
+    with _col_refresh:
+      if st.button("Rafraichir", key="btn_refresh_liste", use_container_width=True):
+        st.rerun()
+
+    if df.empty:
+      st.info("Aucun rapport soumis pour le moment.")
+    else:
+      st.markdown(f'<div style="font-size:0.82rem;font-weight:600;color:{text_sub};margin-bottom:0.5rem;letter-spacing:0.04em;text-transform:uppercase;">Filtres de recherche</div>', unsafe_allow_html=True)
+      col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+      with col_f1:
+        filieres_list = ["Toutes"] + sorted(df['filiere'].dropna().unique().tolist())
+        filiere_filter = st.selectbox("Filière", filieres_list, key="t1_filiere")
+      with col_f2:
+        _now = pd.Timestamp.now()
+        _le = _now.year + 1 if _now.month >= 6 else _now.year
+        _all_y = [f"{y}-{y+1}" for y in range(_le - 1, 2019, -1)]
+        _ex_y = df['annee'].dropna().unique().tolist()
+        _comb = sorted(set(_ex_y + _all_y), reverse=True)
+        annee_filter = st.selectbox("Année", ["Toutes"] + _comb, key="t1_annee")
+      with col_f3:
+        correction_filter = st.selectbox("Correction", ["Tous", "Oui", "Non"], key="t1_corr")
+      with col_f4:
+        search = st.text_input("🔎 Recherche libre", placeholder="Nom, encadrant, intitulé…", key="t1_search")
+
+      filtered = df.copy()
+      if filiere_filter != "Toutes":
+        filtered = filtered[filtered['filiere'] == filiere_filter]
+      if annee_filter != "Toutes":
+        filtered = filtered[filtered['annee'].astype(str) == annee_filter]
+      if correction_filter != "Tous":
+        filtered = filtered[filtered['correction'] == correction_filter]
+      if search:
+        mask = filtered.apply(lambda row: row.astype(str).str.contains(search, case=False, na=False).any(), axis=1)
+        filtered = filtered[mask]
+
+      st.markdown(f'<div style="font-size:0.82rem;color:{text_sub};margin-bottom:0.5rem;"><b>{len(filtered)}</b> résultat(s) sur <b>{len(df)}</b> étudiants</div>', unsafe_allow_html=True)
+
+      display_cols = ['num_ordre','nom','prenom','filiere','annee','intitule_rapport','encadrant','lieu_stage','date_depot_secretariat','correction','nb_copies_bibliotheque']
+      display_df = filtered[[c for c in display_cols if c in filtered.columns]].copy()
+      display_df.rename(columns={
+        'num_ordre':'N° Ordre','nom':'Nom','prenom':'Prénom','filiere':'Filière',
+        'annee':'Année','intitule_rapport':'Intitulé','encadrant':'Encadrant',
+        'lieu_stage':'Lieu Stage','date_depot_secretariat':"Date dépôt",
+        'correction':'Correction','nb_copies_bibliotheque':'Copies Bib.'
+      }, inplace=True)
+
+      # Tableau HTML propre
+      _hdr_bg  = "#1a2744" if dark else "#0f2557"
+      _row_even = "#161b2e" if dark else "#f8fafc"
+      _row_odd  = "#1e2130" if dark else "#ffffff"
+      _txt      = "#e2e8f0" if dark else "#0f172a"
+      _txt_sub  = "#94a3b8" if dark else "#374151"
+      _brd      = "#2d3748" if dark else "#e2e8f0"
+
+      cols_order = list(display_df.columns)
+      header_html = "".join(
+        f'<th style="padding:10px 12px;text-align:left;font-size:0.74rem;font-weight:700;'
+        f'color:#ffffff;letter-spacing:0.05em;white-space:nowrap;">{c}</th>'
+        for c in cols_order
+      )
+      rows_html = ""
+      for idx, (_, row) in enumerate(display_df.iterrows()):
+        bg = _row_even if idx % 2 == 0 else _row_odd
+        cells = "".join(
+          f'<td style="padding:9px 12px;font-size:0.84rem;color:{_txt};'
+          f'border-bottom:1px solid {_brd};white-space:nowrap;max-width:200px;'
+          f'overflow:hidden;text-overflow:ellipsis;">{str(v) if str(v) not in ("nan","None","") else "—"}</td>'
+          for v in row.values
+        )
+        rows_html += f'<tr style="background:{bg};">{cells}</tr>'
+
+      st.markdown(
+        f'<div style="overflow-x:auto;border-radius:12px;border:1px solid {_brd};'
+        f'box-shadow:0 2px 8px rgba(0,0,0,0.07);margin-bottom:1rem;">'
+        f'<table style="width:100%;border-collapse:collapse;">'
+        f'<thead><tr style="background:{_hdr_bg};">{header_html}</tr></thead>'
+        f'<tbody>{rows_html}</tbody>'
+        f'</table></div>',
+        unsafe_allow_html=True
+      )
+
+      # ── PDF Access ───────────────────────────────────────────────
+      st.markdown("---")
+      st.markdown(
+        f'<div style="background:linear-gradient(135deg,#0f2557,#1a56a0);padding:0.7rem 1rem;'
+        f'border-radius:10px;color:white;margin-bottom:0.8rem;">'
+        f'<span style="font-weight:600;color:white;">Accès aux Rapports PDF</span>'
+        f'<span style="font-size:0.78rem;opacity:0.8;margin-left:8px;color:white;">Télécharger les rapports déposés</span>'
+        f'</div>', unsafe_allow_html=True)
+
+      pdf_all = filtered[filtered['pdf_filename'].apply(
+        lambda x: bool(isinstance(x, str) and x.strip() not in ('','nan','None','NaN'))
+      )].copy()
+
+      if pdf_all.empty:
+        st.warning("Aucun PDF disponible pour les étudiants filtrés.")
+      else:
+        pc1, pc2, pc3 = st.columns(3)
+        with pc1: pdf_search = st.text_input("Recherche", placeholder="Nom, intitulé…", key="pdf_search")
+        with pc2: pdf_filiere = st.selectbox("Filière", ["Toutes"]+sorted(pdf_all['filiere'].dropna().unique().tolist()), key="pdf_filiere")
+        with pc3: pdf_annee  = st.selectbox("Année", ["Toutes"]+sorted(pdf_all['annee'].dropna().unique().tolist(), reverse=True), key="pdf_annee")
+
+        pdf_rows = pdf_all.copy()
+        if pdf_search:
+          mask = (pdf_rows['nom'].astype(str).str.contains(pdf_search, case=False, na=False) |
+              pdf_rows['prenom'].astype(str).str.contains(pdf_search, case=False, na=False) |
+              pdf_rows['intitule_rapport'].astype(str).str.contains(pdf_search, case=False, na=False))
+          pdf_rows = pdf_rows[mask]
+        if pdf_filiere != "Toutes": pdf_rows = pdf_rows[pdf_rows['filiere'] == pdf_filiere]
+        if pdf_annee  != "Toutes": pdf_rows = pdf_rows[pdf_rows['annee'].astype(str) == pdf_annee]
+
+        st.markdown(f'<div style="font-size:0.82rem;color:{text_sub};margin-bottom:6px;">📄 <b>{len(pdf_rows)}</b> rapport(s) PDF trouvé(s)</div>', unsafe_allow_html=True)
+
+        if not pdf_rows.empty:
+          header_bg = "#1a2744" if dark else "#1a56a0"
+          st.markdown(
+            f'<div style="display:grid;grid-template-columns:2fr 2fr 1fr 1fr 1.2fr;gap:6px;'
+            f'padding:7px 12px;background:{header_bg};border-radius:8px 8px 0 0;'
+            f'font-size:0.75rem;font-weight:700;color:#ffffff!important;">'
+            f'<div style="color:#ffffff!important;">Étudiant</div>'
+            f'<div style="color:#ffffff!important;">Intitulé</div>'
+            f'<div style="color:#ffffff!important;">Filière</div>'
+            f'<div style="color:#ffffff!important;">Année</div>'
+            f'<div style="text-align:center;color:#ffffff!important;">PDF</div>'
             f'</div>', unsafe_allow_html=True)
 
-    with st.form("form_login", clear_on_submit=False):
-        email_inp = st.text_input("📧 Email institutionnel", placeholder="votre.nom@uca.ac.ma")
-        pwd_inp   = st.text_input("🔑 Mot de passe", type="password", placeholder="••••••••")
-        st.markdown("<br>", unsafe_allow_html=True)
-        submit = st.form_submit_button("Se connecter →", use_container_width=True, type="primary")
+          for i, (_, row) in enumerate(pdf_rows.iterrows()):
+            row_bg = ("#161b2e" if i%2==0 else "#1e2130") if dark else ("#f8fafc" if i%2==0 else "#ffffff")
+            intitule_short = str(row['intitule_rapport'])[:50] + ("…" if len(str(row['intitule_rapport']))>50 else "")
+            pdf_path = get_pdf_path(str(row['pdf_filename']))
+            num_ordre_key = f"{i}_{str(row['num_ordre']).replace('.', '_').replace(' ', '_')}"
 
-    if submit:
-        email = email_inp.strip().lower()
-        if not email.endswith("@uca.ac.ma"):
-            st.error("❌ Utilisez votre email @uca.ac.ma")
-            st.session_state.login_attempts += 1
-        elif account_exists(email) == False and not is_email_allowed(email):
-            # Pas de compte ET pas dans la liste autorisée
-            st.error("❌ Votre email ne figure pas dans la liste des utilisateurs autorisés.")
-            st.session_state.login_attempts += 1
-        elif not account_exists(email) and is_email_allowed(email):
-            # Email autorisé mais pas encore de compte → auto-inscription
-            st.warning("⚠️ Aucun compte trouvé pour cet email. Créez votre compte.")
-            if st.button("→ Créer mon compte", key="goto_register_from_login"):
-                st.session_state.auth_mode = "register"
-                st.session_state.prefill_email = email
-                st.rerun()
-        elif not check_password(email, pwd_inp):
-            st.session_state.login_attempts += 1
-            remaining = MAX_ATTEMPTS - st.session_state.login_attempts
-            st.error(f"❌ Mot de passe incorrect. ({remaining} tentative(s) restante(s))")
-            if remaining <= 0:
-                st.rerun()
-        else:
-            # ✅ Connexion réussie
-            accounts = load_accounts()
-            st.session_state.login_attempts = 0
-            st.session_state.logged_in  = True
-            st.session_state.username   = email
-            st.session_state.role       = accounts[email]["role"]
-            st.session_state.nom_user   = accounts[email]["nom"]
-            st.session_state.page       = "dashboard"
-            st.rerun()
+            c1,c2,c3,c4,c5 = st.columns([2,2,1,1,1.5])
+            row_style = f"background:{row_bg};padding:8px 10px;border-bottom:0.5px solid {border_c};"
+            with c1: st.markdown(f'<div style="{row_style}font-size:0.84rem;font-weight:600;color:{text_main};">#{row["num_ordre"]} — {row["nom"]} {row["prenom"]}</div>', unsafe_allow_html=True)
+            with c2: st.markdown(f'<div style="{row_style}font-size:0.78rem;color:{text_sub};">{intitule_short}</div>', unsafe_allow_html=True)
+            with c3: st.markdown(f'<div style="{row_style}text-align:center;"><span style="background:#1d4ed8;color:#ffffff;padding:2px 8px;border-radius:12px;font-size:0.72rem;font-weight:700;">{row["filiere"]}</span></div>', unsafe_allow_html=True)
+            with c4: st.markdown(f'<div style="{row_style}font-size:0.78rem;color:{text_sub};text-align:center;">{row["annee"]}</div>', unsafe_allow_html=True)
+            with c5:
+              from utils.data_manager import get_pdf_url, _use_supabase
+              pdf_filename = str(row.get('pdf_filename', ''))
+              pdf_available = False
+              pdf_url = None
+              if _use_supabase() and pdf_filename and pdf_filename.strip():
+                pdf_url = get_pdf_url(pdf_filename)
+                pdf_available = True
+              elif os.path.exists(pdf_path):
+                pdf_available = True
+              if pdf_available:
+                cb1, cb2 = st.columns(2)
+                with cb1:
+                  preview_key = f"show_preview_{num_ordre_key}"
+                  label_preview = "Fermer" if st.session_state.get(preview_key) else "Lire"
+                  if st.button(label_preview, key=f"prev_btn_{num_ordre_key}", use_container_width=True):
+                    st.session_state[preview_key] = not st.session_state.get(preview_key, False)
+                    st.rerun()
+                with cb2:
+                  if pdf_url:
+                    st.markdown(f'<a href="{pdf_url}" target="_blank" download style="display:block;text-align:center;background:#1d4ed8;color:white;padding:6px;border-radius:6px;font-size:0.78rem;text-decoration:none;">⬇ PDF</a>', unsafe_allow_html=True)
+                  elif os.path.exists(pdf_path):
+                    with open(pdf_path, "rb") as _pf:
+                      st.download_button("PDF", data=_pf.read(), file_name=str(row['pdf_filename']),
+                                mime="application/pdf", key=f"dl_{num_ordre_key}", use_container_width=True)
+              else:
+                st.markdown('<div style="text-align:center;font-size:0.75rem;color:#9ca3af;padding:8px 0;">Non trouvé</div>', unsafe_allow_html=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
+            # ── Prévisualisation inline (sous la ligne) ──────────────────
+            show_prev = st.session_state.get(f"show_preview_{num_ordre_key}")
+            if show_prev:
+              from utils.data_manager import get_pdf_url, _use_supabase
+              nom_etud = f"{row['nom']} {row['prenom']}"
+              pdf_filename = str(row.get('pdf_filename', ''))
+              pdf_url = get_pdf_url(pdf_filename) if (_use_supabase() and pdf_filename) else None
+              if pdf_url:
+                st.markdown(
+                  f'''<div style="background:{row_bg};padding:10px 14px;border-bottom:2px solid #2563eb;margin-bottom:4px;">
+                  <div style="font-size:0.78rem;font-weight:600;color:#2563eb;margin-bottom:6px;">
+                    Rapport de {nom_etud} — {row["filiere"]} {row["annee"]}
+                  </div>
+                  <iframe src="{pdf_url}"
+                    width="100%" height="650px"
+                    style="border:1.5px solid #cbd5e1;border-radius:8px;background:#fff;">
+                  </iframe>
+                  <p style="font-size:0.75rem;color:#64748b;margin-top:6px;">
+                    Si le PDF ne s'affiche pas, utilisez le bouton PDF pour le télécharger.
+                  </p>
+                  </div>''',
+                  unsafe_allow_html=True
+                )
+              else:
+                st.info("PDF non disponible pour cet étudiant.")
 
-    # Boutons navigation
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("✨  Créer un compte", use_container_width=True,
-                     key="goto_register", type="secondary"):
-            st.session_state.auth_mode = "register"
-            st.rerun()
-    with c2:
-        if st.button("🔑  Mot de passe oublié", use_container_width=True,
-                     key="goto_forgot", type="secondary"):
-            st.session_state.auth_mode = "forgot"
-            st.session_state.reset_step = 1
-            st.rerun()
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-# ══════════════════════════════════════════════════════════════════════════════
-# PAGE : CRÉER UN COMPTE
-# ══════════════════════════════════════════════════════════════════════════════
-def _page_register(logo_html):
-    _card_header(logo_html, "Créer mon compte")
-
-    st.markdown("""
-    <div style="background:rgba(16,163,74,0.15);border:1px solid rgba(16,163,74,0.4);
-                border-radius:8px;padding:9px 12px;font-size:0.8rem;color:#bbf7d0;margin-bottom:0.8rem;">
-        ✅ Votre email doit être dans la liste des utilisateurs autorisés par l'administration.
-    </div>""", unsafe_allow_html=True)
-
-    prefill = st.session_state.get("prefill_email", "")
-
-    with st.form("form_register", clear_on_submit=False):
-        reg_email = st.text_input("📧 Email institutionnel", value=prefill, placeholder="votre.nom@uca.ac.ma")
-        reg_pwd   = st.text_input("🔑 Mot de passe", type="password", placeholder="Min. 8 caractères")
-        reg_conf  = st.text_input("🔑 Confirmer le mot de passe", type="password", placeholder="Répétez le mot de passe")
-        st.markdown("<br>", unsafe_allow_html=True)
-        submit = st.form_submit_button("✨ Créer mon compte", use_container_width=True, type="primary")
-
-    if submit:
-        email = reg_email.strip().lower()
-        errors = []
-        if not email.endswith("@uca.ac.ma"):
-            errors.append("Email doit se terminer par @uca.ac.ma")
-        if not is_email_allowed(email):
-            errors.append("Cet email n'est pas dans la liste des utilisateurs autorisés.")
-        if account_exists(email):
-            errors.append("Un compte existe déjà pour cet email. Connectez-vous.")
-        if len(reg_pwd) < 8:
-            errors.append("Mot de passe : minimum 8 caractères.")
-        if reg_pwd != reg_conf:
-            errors.append("Les mots de passe ne correspondent pas.")
-
-        if errors:
-            for e in errors:
-                st.error(f"❌ {e}")
-        else:
-            info = get_allowed_info(email)
-            nom  = info.get("nom", email.split("@")[0])
-            role = info.get("role", "Professeur")
-            add_account(email, reg_pwd, role, nom)
-            st.success(f"✅ Compte créé avec succès ! Bienvenue **{nom}**.")
-            st.info("Vous pouvez maintenant vous connecter.")
-            st.session_state.auth_mode = "login"
-            st.session_state.prefill_email = ""
-            st.rerun()
-
-    if st.button("← Retour à la connexion", key="back_to_login_reg"):
-        st.session_state.auth_mode = "login"
+  # =====================================================================
+  # TAB 2 : IMPORT / EXPORT
+  # =====================================================================
+  with tab2:
+    st.session_state["active_tab"] = "import"
+    _c1, _c2 = st.columns([8, 2])
+    with _c2:
+      if st.button("Rafraichir", key="btn_refresh_tab2", use_container_width=True):
         st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
+    col_imp, col_exp = st.columns(2)
 
-# ══════════════════════════════════════════════════════════════════════════════
-# PAGE : MOT DE PASSE OUBLIÉ (3 étapes)
-# ══════════════════════════════════════════════════════════════════════════════
-def _page_forgot(logo_html):
-    step = st.session_state.get("reset_step", 1)
+    with col_imp:
+      st.markdown(f'<div style="font-size:1.05rem;font-weight:700;color:{text_main};margin-bottom:0.6rem;border-left:4px solid #2563eb;padding-left:10px;">Import depuis Excel</div>', unsafe_allow_html=True)
+      st.info("Colonnes : Nom, Prénom, Email, Filière, Année, Intitulé, Encadrant, Co-encadrant, Lieu de stage, Correction, Copies bibliothèque.")
+      excel_file = st.file_uploader("Choisir un fichier Excel (.xlsx)", type=["xlsx","xls"], key="excel_upload")
+      if excel_file:
+        c1, c2 = st.columns(2)
+        with c1:
+          if st.button("Aperçu", use_container_width=True, key="btn_apercu"):
+            try:
+              preview = pd.read_excel(excel_file, engine='openpyxl')
+              st.dataframe(preview.head(5), use_container_width=True)
+            except Exception as e:
+              st.error(f"Erreur: {e}")
+        with c2:
+          if st.button("Importer", type="primary", use_container_width=True, key="btn_importer"):
+            added, err = import_from_excel(excel_file)
+            if err: st.error(f"Erreur: {err}")
+            else:
+              st.success(f"{added} étudiant(s) importé(s) !")
+              st.rerun()
 
-    subtitles = {1:"Mot de passe oublié", 2:"Vérification du code", 3:"Nouveau mot de passe"}
-    _card_header(logo_html, subtitles.get(step, "Réinitialisation"))
+    with col_exp:
+      st.markdown(f'<div style="font-size:1.05rem;font-weight:700;color:{text_main};margin-bottom:0.6rem;border-left:4px solid #2563eb;padding-left:10px;">Export des données</div>', unsafe_allow_html=True)
+      if not df.empty:
+        csv_data = df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+        st.download_button("Exporter en CSV", data=csv_data, file_name="rapports_PFE.csv",
+                  mime="text/csv", use_container_width=True, key="btn_export_csv")
+        try:
+          import io
+          buf = io.BytesIO()
+          with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Rapports PFE')
+          st.download_button("Exporter en Excel (.xlsx)", data=buf.getvalue(),
+                    file_name="rapports_PFE.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True, key="btn_export_xlsx")
+        except ImportError:
+          st.caption("(openpyxl requis pour l'export Excel)")
+      else:
+        st.info("Aucune donnée à exporter.")
 
-    # Barre de progression
-    steps_html = ""
-    for i in range(1, 4):
-        if i < step:
-            bg, tc = "#16a34a", "white"
-            label = "✓"
-        elif i == step:
-            bg, tc = "#2563eb", "white"
-            label = str(i)
-        else:
-            bg, tc = "rgba(255,255,255,0.15)", "rgba(255,255,255,0.4)"
-            label = str(i)
-        names = {1:"Email", 2:"Code", 3:"Nouveau MDP"}
-        line_c = "#16a34a" if i < step else "rgba(255,255,255,0.2)"
-        steps_html += (
-            f'<div style="display:flex;flex-direction:column;align-items:center;flex:1;">'
-            f'<div style="width:28px;height:28px;border-radius:50%;background:{bg};color:{tc};'
-            f'display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;">{label}</div>'
-            f'<div style="font-size:9px;color:rgba(255,255,255,0.5);margin-top:4px;">{names[i]}</div></div>'
-        )
-        if i < 3:
-            steps_html += f'<div style="flex:1;height:2px;background:{line_c};margin-bottom:14px;align-self:center;"></div>'
-
-    st.markdown(
-        f'<div style="display:flex;align-items:center;margin-bottom:1.2rem;">{steps_html}</div>',
+    # ── Reset / Vider la base ─────────────────────────────────────────
+    if is_admin:
+      st.markdown("---")
+      st.markdown(f'<div style="font-size:1.05rem;font-weight:700;color:#dc2626;margin-bottom:0.6rem;border-left:4px solid #dc2626;padding-left:10px;">Réinitialisation de la base</div>', unsafe_allow_html=True)
+      st.markdown(
+        f'<div style="background:{"#2d1515" if dark else "#fef2f2"};border:2px solid #fca5a5;'
+        f'border-radius:10px;padding:12px 16px;margin-bottom:1rem;">'
+        f'<b style="color:#dc2626;">Zone dangereuse</b> — Cette action supprime <b>tous</b> les étudiants et leurs PDFs de façon irréversible.</div>',
         unsafe_allow_html=True)
 
-    # ── ÉTAPE 1 : Saisir l'email ───────────────────────────────────────────
-    if step == 1:
-        st.markdown("""
-        <div style="color:rgba(255,255,255,0.7);font-size:0.82rem;margin-bottom:0.8rem;">
-            Entrez votre email institutionnel. Un code à 6 chiffres vous sera envoyé.
-        </div>""", unsafe_allow_html=True)
-
-        with st.form("form_forgot_email"):
-            forgot_email = st.text_input("📧 Email institutionnel", placeholder="votre.nom@uca.ac.ma")
-            submit = st.form_submit_button("📨 Envoyer le code", use_container_width=True, type="primary")
-
-        if submit:
-            email = forgot_email.strip().lower()
-            # Message générique volontairement — évite d'indiquer si le compte existe
-            if not email.endswith("@uca.ac.ma") or not is_email_allowed(email):
-                st.error("❌ Cet email n'est pas reconnu dans notre système.")
-            elif not account_exists(email):
-                st.error("❌ Aucun compte trouvé pour cet email. Créez votre compte d'abord.")
-            else:
-                # Générer le code
-                code = generate_reset_token(email)
-                # Envoyer l'email
-                from utils.email_sender import send_reset_email
-                accounts = load_accounts()
-                nom = accounts[email]["nom"]
-                ok, msg = send_reset_email(email, nom, code)
-
-                if ok:
-                    st.session_state.reset_email = email
-                    st.session_state.reset_step  = 2
-                    st.success("✅ Code envoyé ! Vérifiez votre boîte email.")
-                    st.rerun()
-                elif msg == "EMAIL_NOT_CONFIGURED":
-                    # Mode démo : afficher le code directement
-                    st.session_state.reset_email = email
-                    st.session_state.reset_step  = 2
-                    st.warning(f"⚠️ Email non configuré — Mode DÉMO. Votre code : **`{code}`**")
-                    st.info("Pour activer l'envoi réel, configurez `data/email_config.json`")
-                    st.rerun()
-                else:
-                    st.error(f"❌ Erreur envoi email : {msg}")
-
-    # ── ÉTAPE 2 : Vérifier le code ─────────────────────────────────────────
-    elif step == 2:
-        email = st.session_state.reset_email
-        st.markdown(f"""
-        <div style="color:rgba(255,255,255,0.7);font-size:0.82rem;margin-bottom:0.8rem;">
-            Un code à 6 chiffres a été envoyé à <b style="color:white;">{email}</b><br>
-            <span style="color:rgba(255,255,255,0.5);">Le code expire dans 15 minutes.</span>
-        </div>""", unsafe_allow_html=True)
-
-        with st.form("form_verify_code"):
-            code_inp = st.text_input("🔢 Code à 6 chiffres", placeholder="123456", max_chars=6)
-            submit   = st.form_submit_button("✅ Vérifier le code", use_container_width=True, type="primary")
-
-        if submit:
-            valid, msg = verify_reset_token(email, code_inp)
-            if valid:
-                st.session_state.reset_step = 3
-                st.success("✅ Code correct ! Choisissez votre nouveau mot de passe.")
-                st.rerun()
-            else:
-                st.error(f"❌ {msg}")
-
-        col_r, col_b = st.columns(2)
-        with col_r:
-            if st.button("🔄 Renvoyer le code", key="resend_code"):
-                email = st.session_state.reset_email
-                code  = generate_reset_token(email)
-                from utils.email_sender import send_reset_email
-                accounts = load_accounts()
-                nom = accounts[email]["nom"]
-                ok, msg = send_reset_email(email, nom, code)
-                if ok:
-                    st.success("✅ Nouveau code envoyé !")
-                elif msg == "EMAIL_NOT_CONFIGURED":
-                    st.warning(f"⚠️ Mode DÉMO — Nouveau code : **`{code}`**")
-                else:
-                    st.error(f"Erreur : {msg}")
-        with col_b:
-            if st.button("← Retour", key="back_step1"):
-                st.session_state.reset_step = 1
-                st.rerun()
-
-    # ── ÉTAPE 3 : Nouveau mot de passe ─────────────────────────────────────
-    elif step == 3:
-        email = st.session_state.reset_email
-        st.markdown("""
-        <div style="color:rgba(255,255,255,0.7);font-size:0.82rem;margin-bottom:0.8rem;">
-            Choisissez un nouveau mot de passe sécurisé (minimum 8 caractères).
-        </div>""", unsafe_allow_html=True)
-
-        with st.form("form_new_password"):
-            new_pwd  = st.text_input("🔑 Nouveau mot de passe", type="password", placeholder="Min. 8 caractères")
-            conf_pwd = st.text_input("🔑 Confirmer le mot de passe", type="password", placeholder="Répétez")
-            submit   = st.form_submit_button("💾 Enregistrer le nouveau mot de passe", use_container_width=True, type="primary")
-
-        if submit:
-            errors = []
-            if len(new_pwd) < 8:
-                errors.append("Minimum 8 caractères.")
-            if new_pwd != conf_pwd:
-                errors.append("Les mots de passe ne correspondent pas.")
-            if errors:
-                for e in errors:
-                    st.error(f"❌ {e}")
-            else:
-                # Invalider le token + changer le mot de passe
-                invalidate_token(email)
-                apply_new_password(email, new_pwd)
-                # Reset état
-                st.session_state.reset_step  = 1
-                st.session_state.reset_email = ""
-                st.session_state.auth_mode   = "login"
-                st.success("✅ Mot de passe modifié avec succès ! Connectez-vous.")
-                st.rerun()
-
-    if step != 3:
-        st.markdown("<br>", unsafe_allow_html=True)
-    if step == 1:
-        if st.button("← Retour à la connexion", key="back_to_login_forgot"):
-            st.session_state.auth_mode = "login"
-            st.session_state.reset_step = 1
+      if not st.session_state.get("confirm_reset_all"):
+        if st.button("Vider toute la base étudiants", type="secondary", key="btn_ask_reset"):
+          st.session_state.confirm_reset_all = True
+          st.rerun()
+      else:
+        st.warning("Êtes-vous sûr ? Cette action est **irréversible**.")
+        rc1, rc2 = st.columns(2)
+        with rc1:
+          if st.button("Confirmer la suppression", type="primary", key="btn_confirm_reset"):
+            clear_all_students()
+            st.session_state.confirm_reset_all = False
+            st.success("Base étudiants réinitialisée avec succès.")
             st.rerun()
-    st.markdown("</div>", unsafe_allow_html=True)
+        with rc2:
+          if st.button("Annuler", key="btn_cancel_reset"):
+            st.session_state.confirm_reset_all = False
+            st.rerun()
+
+  # =====================================================================
+  # TAB 3 : GESTION
+  # =====================================================================
+  with tab3:
+    st.session_state["active_tab"] = "gestion"
+    _c1, _c2 = st.columns([8, 2])
+    with _c2:
+      if st.button("Rafraichir", key="btn_refresh_tab3", use_container_width=True):
+        st.rerun()
+
+    st.markdown(f'<div style="font-size:1.05rem;font-weight:700;color:{text_main};margin-bottom:0.8rem;border-left:4px solid #2563eb;padding-left:10px;">Modifier / Mettre à jour un étudiant</div>', unsafe_allow_html=True)
+
+    if df.empty:
+      st.info("Aucun étudiant enregistré.")
+    else:
+      fg1, fg2, fg3 = st.columns(3)
+      with fg1: gest_search = st.text_input("Nom / Prénom", placeholder="Tapez pour filtrer…", key="gest_search")
+      with fg2: gest_filiere = st.selectbox("Filière", ["Toutes"]+sorted(df['filiere'].dropna().unique().tolist()), key="gest_filiere")
+      with fg3:
+        _cy = pd.Timestamp.now().year; _cm = pd.Timestamp.now().month
+        _le2 = _cy+1 if _cm>=6 else _cy
+        _all_y2 = [f"{y}-{y+1}" for y in range(_le2-1, 2019, -1)]
+        _comb_y2 = sorted(set(df['annee'].dropna().unique().tolist() + _all_y2), reverse=True)
+        gest_annee = st.selectbox("Année", ["Toutes"]+_comb_y2, key="gest_annee")
+
+      df_gest = df.copy()
+      if gest_search:
+        _m = (df_gest['nom'].astype(str).str.contains(gest_search, case=False, na=False) |
+           df_gest['prenom'].astype(str).str.contains(gest_search, case=False, na=False))
+        df_gest = df_gest[_m]
+      if gest_filiere != "Toutes": df_gest = df_gest[df_gest['filiere'] == gest_filiere]
+      if gest_annee  != "Toutes": df_gest = df_gest[df_gest['annee'].astype(str) == gest_annee]
+
+      st.markdown(f'<div style="font-size:0.82rem;color:{text_sub};margin-bottom:8px;"><b>{len(df_gest)}</b> étudiant(s) trouvé(s) sur <b>{len(df)}</b></div>', unsafe_allow_html=True)
+
+      if df_gest.empty:
+        st.info("Aucun étudiant correspondant.")
+      else:
+        options_labels = [
+          f"#{row['num_ordre']} — {row['nom']} {row['prenom']} ({row['filiere']}, {row['annee']})"
+          for _, row in df_gest.iterrows()
+        ]
+        options_nums = [row['num_ordre'] for _, row in df_gest.iterrows()]
+
+        selected_label = st.selectbox("Choisir un étudiant", options_labels, key="gest_select_etudiant")
+        selected_num  = options_nums[options_labels.index(selected_label)]
+
+        student_rows = df[df['num_ordre'].astype(str) == str(selected_num)]
+        if student_rows.empty:
+          st.warning("Étudiant introuvable. Rafraîchissez la page.")
+          st.stop()
+        student = student_rows.iloc[0]
+
+        st.markdown("---")
+        # ── Formulaire avec st.form pour bloquer les reruns pendant l'upload ──
+        with st.form(key=f"form_update_{selected_num}"):
+          col_e1, col_e2 = st.columns(2)
+          with col_e1:
+            if can_edit_correction:
+              new_correction = st.selectbox("Correction", ["Non","Oui"],
+                index=0 if str(student.get('correction','Non')) == 'Non' else 1)
+            else:
+              new_correction = str(student.get('correction','Non'))
+              st.text_input("Correction", value="Oui" if new_correction=="Oui" else "Non", disabled=True)
+            if can_edit_copies:
+              new_copies = st.number_input("Nb copies bibliothèque",
+                min_value=0, value=int(student.get('nb_copies_bibliotheque', 0) or 0))
+            else:
+              new_copies = int(student.get('nb_copies_bibliotheque', 0) or 0)
+              st.text_input("Nb copies bibliothèque", value=str(new_copies), disabled=True)
+            reg_date = str(student.get('date_depot_secretariat','') or student.get('date_soumission',''))
+            st.text_input("Date enregistrement", value=reg_date, disabled=True)
+            new_nom     = st.text_input("Nom",    value=str(student.get('nom','')))
+            new_prenom  = st.text_input("Prénom", value=str(student.get('prenom','')))
+            new_email   = st.text_input("Email",  value=str(student.get('email','')))
+          with col_e2:
+            new_encadrant = st.text_input("Encadrant",    value=str(student.get('encadrant','')))
+            new_co_enc    = st.text_input("Co-encadrant", value=str(student.get('co_encadrant','')))
+            new_lieu      = st.text_input("Lieu de stage",value=str(student.get('lieu_stage','')))
+            new_intitule  = st.text_area("Intitulé rapport", value=str(student.get('intitule_rapport','')), height=100)
+            _fil_opts = ["GIIA","GTR","GATE","GPMA","GINDUS","GMSI"]
+            _cur_fil  = str(student.get('filiere','GIIA'))
+            _fil_idx  = _fil_opts.index(_cur_fil) if _cur_fil in _fil_opts else 0
+            new_filiere = st.selectbox("Filière", _fil_opts, index=_fil_idx)
+
+          # ── Section PDF dans le form ───────────────────────────────────────
+          st.markdown("---")
+          current_pdf = str(student.get('pdf_filename', '')).strip()
+          pdf_valid = isinstance(student.get('pdf_filename'), str) and current_pdf not in ('','nan','None','NaN')
+          from utils.data_manager import get_pdf_url, _use_supabase, _upload_pdf_supabase
+          pdf_exists = (pdf_valid and _use_supabase()) or (pdf_valid and os.path.exists(get_pdf_path(current_pdf)))
+
+          if pdf_exists:
+            st.markdown(f'<div style="background:{"#0d2b1a" if dark else "#f0fdf4"};border:1px solid #86efac;border-radius:8px;padding:10px 14px;margin-bottom:10px;"><b style="color:#15803d;">PDF présent : {current_pdf}</b></div>', unsafe_allow_html=True)
+          else:
+            st.markdown(f'<div style="background:{"#2b2300" if dark else "#fef9c3"};border:1px solid #fde047;border-radius:8px;padding:10px 14px;margin-bottom:10px;"><b style="color:#92400e;">Aucun PDF pour cet étudiant</b></div>', unsafe_allow_html=True)
+
+          # Submit button
+          submitted = st.form_submit_button("Mettre à jour", type="primary", use_container_width=True)
+
+        # ── Section PDF EN DEHORS du form ─────────────────────────────────────
+        st.markdown("---")
+        replace_pdf = pdf_exists == False  # True si pas de PDF
+        if pdf_exists:
+          replace_pdf = st.checkbox("Remplacer le PDF existant par un nouveau", key="chk_replace_pdf")
+
+        if replace_pdf:
+            from utils.data_manager import _get_supabase_url, _get_supabase_key, STORAGE_BUCKET
+            _safe_name = f"{selected_num}.pdf"
+            _upload_url = f"{_get_supabase_url()}/storage/v1/object/{STORAGE_BUCKET}/{_safe_name}"
+            _anon_key = _get_supabase_key()
+
+            # Upload direct vers Supabase via JavaScript avec XMLHttpRequest (supporte gros fichiers)
+            _upload_result = st.components.v1.html(f"""
+<div id="upload_zone" style="border:2px dashed #2563eb;border-radius:10px;padding:20px;text-align:center;background:#f0f7ff;margin:10px 0;">
+  <p style="color:#1d4ed8;font-weight:600;margin-bottom:10px;">Cliquez pour choisir un PDF</p>
+  <input type="file" id="pdf_input" accept=".pdf" style="display:none">
+  <button onclick="document.getElementById('pdf_input').click()" 
+    style="background:#1d4ed8;color:white;border:none;padding:10px 24px;border-radius:6px;cursor:pointer;font-size:14px;">
+    Choisir le PDF
+  </button>
+  <div id="status" style="margin-top:12px;font-size:13px;color:#374151;"></div>
+  <div id="progress" style="display:none;margin-top:8px;background:#e2e8f0;border-radius:4px;height:8px;">
+    <div id="progress_bar" style="background:#2563eb;height:8px;border-radius:4px;width:0%;transition:width 0.3s;"></div>
+  </div>
+</div>
+<script>
+document.getElementById('pdf_input').addEventListener('change', function(e) {{
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  const statusEl = document.getElementById('status');
+  const progressEl = document.getElementById('progress');
+  const progressBar = document.getElementById('progress_bar');
+  const zone = document.getElementById('upload_zone');
+  
+  statusEl.innerHTML = 'Envoi en cours: ' + file.name + ' (' + (file.size/1024/1024).toFixed(1) + ' MB)';
+  progressEl.style.display = 'block';
+  progressBar.style.width = '5%';
+  
+  const xhr = new XMLHttpRequest();
+  
+  xhr.upload.addEventListener('progress', function(e) {{
+    if (e.lengthComputable) {{
+      const pct = Math.round(e.loaded / e.total * 100);
+      progressBar.style.width = pct + '%';
+      statusEl.innerHTML = 'Envoi: ' + pct + '% — ' + file.name;
+    }}
+  }});
+  
+  xhr.addEventListener('load', function() {{
+    if (xhr.status === 200 || xhr.status === 201) {{
+      progressBar.style.width = '100%';
+      statusEl.innerHTML = '<span style="color:#15803d;font-weight:600;">PDF uploadé avec succès ! Cliquez Mettre à jour</span>';
+      zone.style.borderColor = '#86efac';
+      zone.style.background = '#f0fdf4';
+      // Notifier Streamlit via l'input caché
+      const inputs = window.parent.document.querySelectorAll('input[type=text]');
+      inputs.forEach(inp => {{ if(inp.value === '') {{ inp.value = 'ok'; inp.dispatchEvent(new Event('input', {{bubbles:true}})); }} }});
+    }} else {{
+      statusEl.innerHTML = '<span style="color:#dc2626;">Erreur ' + xhr.status + ': ' + xhr.responseText + '</span>';
+    }}
+  }});
+  
+  xhr.addEventListener('error', function() {{
+    statusEl.innerHTML = '<span style="color:#dc2626;">Erreur réseau — réessayez</span>';
+  }});
+  
+  xhr.open('POST', '{_upload_url}');
+  xhr.setRequestHeader('apikey', '{_anon_key}');
+  xhr.setRequestHeader('Authorization', 'Bearer {_anon_key}');
+  xhr.setRequestHeader('Content-Type', 'application/pdf');
+  xhr.setRequestHeader('x-upsert', 'true');
+  xhr.timeout = 300000; // 5 minutes
+  xhr.send(file);
+}});
+</script>
+""", height=160)
+            # Le nom du fichier est sauvegardé SEULEMENT si l'upload a réussi
+            # via le champ caché mis à jour par le JS
+            _confirm_key = f"pdf_confirm_{selected_num}"
+            _confirm_val = st.text_input("", value="", key=_confirm_key, label_visibility="collapsed")
+            if _confirm_val == "ok":
+              st.session_state[f"pdf_uploaded_{selected_num}"] = _safe_name
+              st.success("PDF prêt — cliquez Mettre à jour")
+
+        if submitted:
+          updates = {
+            'correction': new_correction,
+            'nb_copies_bibliotheque': new_copies,
+            'encadrant': new_encadrant,
+            'co_encadrant': new_co_enc,
+            'lieu_stage': new_lieu,
+            'intitule_rapport': new_intitule,
+            'nom': new_nom.strip().upper(),
+            'prenom': new_prenom.strip(),
+            'email': new_email.strip(),
+            'filiere': new_filiere,
+          }
+          # Ajouter le PDF si uploadé via JS
+          _up_key = f"pdf_uploaded_{selected_num}"
+          if _up_key in st.session_state:
+            updates['pdf_filename'] = st.session_state.pop(_up_key)
+          update_student(selected_num, updates)
+          st.success("Etudiant mis à jour ! Visible chez tous dans 5 secondes.")
+          st.rerun()
+        # Bouton suppression EN DEHORS du form
+        if can_delete_student:
+          if st.button("Supprimer cet étudiant", type="secondary", use_container_width=True, key="btn_delete_student"):
+            delete_student(selected_num)
+            if "gest_select_etudiant" in st.session_state:
+              del st.session_state["gest_select_etudiant"]
+            st.warning("Étudiant supprimé.")
+            st.rerun()
+        else:
+          st.caption("(Suppression réservée à l'Administration)")
+
+    # Ajout manuel
+    st.markdown("---")
+    st.markdown(f'<div style="font-size:1rem;font-weight:700;color:{text_main};margin-bottom:0.5rem;border-left:4px solid #2563eb;padding-left:10px;">Ajouter manuellement un étudiant</div>', unsafe_allow_html=True)
+    with st.expander("Formulaire d'ajout manuel"):
+      from utils.data_manager import add_student
+      from datetime import datetime as _dt
+
+      # Clé dynamique pour vider les champs après ajout
+      if "form_version" not in st.session_state:
+        st.session_state.form_version = 0
+      _fv = st.session_state.form_version
+
+      _cy2 = pd.Timestamp.now().year; _cm2 = pd.Timestamp.now().month
+      _le3 = _cy2+1 if _cm2>=6 else _cy2
+      _ay3 = [f"{y}-{y+1}" for y in range(_le3-1, 2019, -1)]
+
+      # Afficher message succès
+      if st.session_state.pop("add_success", False):
+        st.success("Etudiant ajouté avec succès !")
+
+      m_col1, m_col2 = st.columns(2)
+      with m_col1:
+        m_nom      = st.text_input("Nom *",                    key=f"m_nom_{_fv}")
+        m_email    = st.text_input("Email *",                  key=f"m_email_{_fv}")
+        m_filiere  = st.selectbox("Filière *", ["GIIA","GTR","GATE","GPMA","GINDUS","GMSI"], key=f"m_filiere_{_fv}")
+        m_intitule = st.text_input("Intitulé rapport *",       key=f"m_intitule_{_fv}")
+        m_lieu     = st.text_input("Lieu de stage *",          key=f"m_lieu_{_fv}")
+      with m_col2:
+        m_prenom    = st.text_input("Prénom *",                key=f"m_prenom_{_fv}")
+        m_annee     = st.selectbox("Année *", _ay3,            key=f"m_annee_{_fv}")
+        m_encadrant = st.text_input("Encadrant *",             key=f"m_encadrant_{_fv}")
+        m_co_enc    = st.text_input("Co-encadrant (optionnel)", key=f"m_co_enc_{_fv}")
+
+      m_pdf = st.file_uploader("Rapport PDF (optionnel)", type=["pdf"], key=f"m_pdf_upload_{_fv}")
+
+      if st.button("Ajouter l'étudiant", type="primary", key="btn_add_student_manual"):
+        _errs_add = []
+        if not m_nom.strip(): _errs_add.append("Le nom est obligatoire.")
+        if not m_prenom.strip(): _errs_add.append("Le prénom est obligatoire.")
+        if not m_email.strip(): _errs_add.append("L'email est obligatoire.")
+        if not m_intitule.strip(): _errs_add.append("L'intitulé du rapport est obligatoire.")
+        if not m_encadrant.strip(): _errs_add.append("L'encadrant est obligatoire.")
+        if not m_lieu.strip(): _errs_add.append("Le lieu de stage est obligatoire.")
+        if _errs_add:
+          for _e in _errs_add:
+            st.error(_e)
+        else:
+          st.session_state["adding_student"] = True
+          add_student({
+            'nom': m_nom.strip().upper(), 'prenom': m_prenom.strip(),
+            'email': m_email.strip(), 'filiere': m_filiere, 'annee': m_annee,
+            'intitule_rapport': m_intitule.strip(), 'encadrant': m_encadrant.strip(),
+            'co_encadrant': m_co_enc.strip(), 'lieu_stage': m_lieu.strip(),
+            'date_depot_secretariat': _dt.now().strftime("%Y-%m-%d %H:%M"),
+            'correction': 'Non', 'nb_copies_bibliotheque': 0
+          }, m_pdf)
+          st.success("Étudiant ajouté avec succès !")
+          # Vider les champs du formulaire
+          for _k in ["m_nom", "m_prenom", "m_email", "m_intitule", "m_encadrant", "m_co_enc", "m_lieu", "m_pdf_upload"]:
+            if _k in st.session_state:
+              del st.session_state[_k]
+          st.session_state["add_success"] = True
+          st.session_state.form_version += 1
+          st.rerun()
+
+  # =====================================================================
+  # TAB 4 : COMPTES (Admin only)
+  # =====================================================================
+  if is_admin and tab4 is not None:
+    with tab4:
+      st.session_state["active_tab"] = "comptes"
+      from modules.login import load_accounts, add_account, delete_account, SUPER_ADMIN, save_allowed_excel, load_allowed_emails, is_email_allowed
+      import io as _io
+
+      accounts     = load_accounts()
+      allowed_accounts = load_allowed_emails()
+      current_user   = st.session_state.get("username", "")
+      is_superadmin  = (current_user == SUPER_ADMIN)
+
+      header_color = "linear-gradient(135deg,#0f2557,#1a56a0)" if is_superadmin else "linear-gradient(135deg,#374151,#4b5563)"
+      header_desc = ("Vous êtes <b>Super Administrateur</b> — accès complet." if is_superadmin
+              else "Accès <b>lecture seule</b> — seul le Super Admin peut modifier.")
+
+      st.markdown(
+        f'<div style="background:{header_color};padding:1rem 1.2rem;border-radius:12px;color:white;margin-bottom:1rem;">'
+        f'<div style="font-size:0.95rem;font-weight:600;color:#ffffff;-webkit-text-fill-color:#ffffff;">Comptes d\'Accès — ENSA Safi</div>'
+        f'<div style="font-size:0.78rem;opacity:0.85;margin-top:4px;color:#ffffff;-webkit-text-fill-color:#ffffff;">{header_desc}</div>'
+        f'</div>', unsafe_allow_html=True)
+
+      total_acc = len(accounts)
+      nb_admin = sum(1 for v in accounts.values() if v['role'] == 'Administration')
+      nb_prof  = sum(1 for v in accounts.values() if v['role'] == 'Professeur')
+      nb_secret = sum(1 for v in accounts.values() if v['role'] == 'Secrétaire')
+      nb_biblio = sum(1 for v in accounts.values() if v['role'] == 'Responsable Bibliothèque')
+      kc1,kc2,kc3,kc4,kc5 = st.columns(5)
+      kc1.metric("👥 Total comptes", total_acc)
+      kc2.metric("🔴 Admins",    nb_admin)
+      kc3.metric("🔵 Professeurs",  nb_prof)
+      kc4.metric("🟢 Secrétaires",  nb_secret)
+      kc5.metric("🟠 Biblio",    nb_biblio)
+      st.markdown("---")
+
+      st.markdown('<div style="font-size:0.95rem;font-weight:700;margin-bottom:0.6rem;">Liste des comptes autorisés</div>', unsafe_allow_html=True)
+      col_a, col_b = st.columns([2,1])
+      with col_a:
+        allowed_file = st.file_uploader("Importer un fichier Excel (.xlsx) des comptes autorisés", type=["xlsx","xls"], key="allowed_upload")
+      with col_b:
+        if allowed_accounts:
+          allowed_df = pd.DataFrame([{"Email": e, "Nom": v["nom"], "Rôle": v["role"]} for e, v in allowed_accounts.items()])
+          buf_allowed = _io.BytesIO()
+          with pd.ExcelWriter(buf_allowed, engine='openpyxl') as writer:
+            allowed_df.to_excel(writer, index=False, sheet_name='Autorises')
+          st.download_button("Télécharger la liste actuelle", data=buf_allowed.getvalue(),
+                    file_name="utilisateurs_autorises.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="download_allowed_list", use_container_width=True)
+        else:
+          st.write("Aucun fichier autorisé n'est chargé.")
+
+      if allowed_file:
+        try:
+          bytes_data = allowed_file.getvalue()
+          preview_df = pd.read_excel(_io.BytesIO(bytes_data), engine="openpyxl")
+          st.markdown(f"**Fichier chargé : {len(preview_df)} ligne(s)**")
+          st.markdown("Ce fichier n'est pas encore enregistré. Cliquez sur \"Enregistrer cette liste autorisée\" pour le sauvegarder.")
+          st.dataframe(preview_df.head(15), use_container_width=True)
+          if st.button("Enregistrer cette liste autorisée", type="primary", key="save_allowed_list"):
+            df_to_save = pd.read_excel(_io.BytesIO(bytes_data), engine="openpyxl")
+            save_allowed_excel(df_to_save)
+            st.success("Liste autorisée enregistrée.")
+            st.rerun()
+        except Exception as exc:
+          st.error(f"Erreur lors de la lecture du fichier Excel. Vérifiez le format et les colonnes. ({exc})")
+
+      sub1, sub2 = st.tabs(["Liste des comptes", "Ajouter un compte"])
+
+      with sub1:
+        fc1, fc2 = st.columns(2)
+        with fc1: acc_search = st.text_input("🔎 Rechercher (nom / email)", key="acc_search")
+        with fc2: acc_role_filter = st.selectbox("Filtrer par rôle", ["Tous","Administration","Professeur","Secrétaire","Responsable Bibliothèque"], key="acc_role_filter")
+
+        filtered_acc = {
+          e: i for e, i in accounts.items()
+          if (acc_search.lower() in e.lower() or acc_search.lower() in i['nom'].lower() if acc_search else True)
+          and (i['role'] == acc_role_filter if acc_role_filter != "Tous" else True)
+        }
+        st.markdown(f'<div style="font-size:0.82rem;color:{text_sub};margin-bottom:8px;"><b>{len(filtered_acc)}</b> compte(s) sur <b>{total_acc}</b></div>', unsafe_allow_html=True)
+
+        # Inject CSS to force button visibility regardless of row background
+        # Force all buttons visible - inject scoped CSS
+        if dark:
+            st.markdown("""
+            <style>
+            .stButton > button {
+                color: #e2e8f0 !important;
+                background: #2d3748 !important;
+                border: 1.5px solid #4b5563 !important;
+                font-weight: 600 !important;
+            }
+            .stButton > button[kind="primary"] {
+                background: linear-gradient(135deg,#1a56a0,#2563eb) !important;
+                color: #ffffff !important; border: none !important;
+            }
+            </style>""", unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <style>
+            /* Default buttons : fond blanc, texte NOIR visible */
+            [data-testid="baseButton-secondary"],
+            [data-testid="baseButton-secondaryFormSubmit"],
+            .stButton > button {
+                background-color: #ffffff !important;
+                background: #ffffff !important;
+                border: 1.5px solid #1a56a0 !important;
+                font-weight: 600 !important;
+                color: #1a56a0 !important;
+                fill: #1a56a0 !important;
+            }
+            [data-testid="baseButton-secondary"] *,
+            [data-testid="baseButton-secondaryFormSubmit"] *,
+            .stButton > button * {
+                color: #1a56a0 !important;
+                fill: #1a56a0 !important;
+                -webkit-text-fill-color: #1a56a0 !important;
+            }
+            [data-testid="baseButton-secondary"]:hover,
+            .stButton > button:hover {
+                background: #eff6ff !important;
+                border-color: #2563eb !important;
+            }
+            /* Primary : bleu + texte blanc */
+            [data-testid="baseButton-primary"],
+            [data-testid="baseButton-primaryFormSubmit"],
+            .stButton > button[kind="primary"] {
+                background: linear-gradient(135deg,#1a56a0,#2563eb) !important;
+                background-color: #1a56a0 !important;
+                border: none !important;
+                color: #ffffff !important;
+            }
+            [data-testid="baseButton-primary"] *,
+            [data-testid="baseButton-primaryFormSubmit"] *,
+            .stButton > button[kind="primary"] * {
+                color: #ffffff !important;
+                fill: #ffffff !important;
+                -webkit-text-fill-color: #ffffff !important;
+            }
+            /* Download buttons : bleu + texte blanc */
+            [data-testid="stDownloadButton"] button,
+            .stDownloadButton > button {
+                background: linear-gradient(135deg,#1a56a0,#2563eb) !important;
+                background-color: #1a56a0 !important;
+                border: none !important;
+                color: #ffffff !important;
+            }
+            [data-testid="stDownloadButton"] button *,
+            .stDownloadButton > button * {
+                color: #ffffff !important;
+                fill: #ffffff !important;
+                -webkit-text-fill-color: #ffffff !important;
+            }
+            </style>""", unsafe_allow_html=True)
+
+        header_bg2 = "#1a2744" if dark else "#0f2557"
+        st.markdown(
+          f'<div style="display:grid;grid-template-columns:2.5fr 1.5fr 1.5fr 1fr 1fr;gap:6px;'
+          f'padding:7px 12px;background:{header_bg2};border-radius:8px 8px 0 0;'
+          f'font-size:0.75rem;font-weight:700;">'
+          f'<div style="color:#ffffff;-webkit-text-fill-color:#ffffff;">Nom &amp; Email</div>'
+          f'<div style="color:#ffffff;-webkit-text-fill-color:#ffffff;">Rôle</div>'
+          f'<div style="color:#ffffff;-webkit-text-fill-color:#ffffff;">Statut</div>'
+          f'<div style="text-align:center;color:#ffffff;-webkit-text-fill-color:#ffffff;">Modifier MDP</div>'
+          f'<div style="text-align:center;color:#ffffff;-webkit-text-fill-color:#ffffff;">Supprimer</div>'
+          f'</div>', unsafe_allow_html=True)
+
+        role_colors = {
+          "Administration": ("#dc2626","#ffffff","🔴"),
+          "Professeur":   ("#1d4ed8","#ffffff","🔵"),
+          "Secrétaire":   ("#15803d","#ffffff","🟢"),
+          "Responsable Bibliothèque": ("#7c3aed","#ffffff","📚"),
+        }
+
+        for i, (email, info) in enumerate(filtered_acc.items()):
+          row_bg2 = ("#161b2e" if i%2==0 else "#1e2130") if dark else ("#f8fafc" if i%2==0 else "#ffffff")
+          is_me  = (email == current_user)
+          rb, rc, ri = role_colors.get(info['role'], ("#f9fafb","#374151","⚪"))
+
+          ca,cb,cc,cd,ce = st.columns([2.5,1.5,1.5,1,1])
+          row_s = f"background:{row_bg2};padding:8px 10px;border-bottom:0.5px solid {border_c};"
+          with ca:
+            me_badge = ' <span style="background:#fde047;color:#713f12;font-size:10px;padding:1px 6px;border-radius:10px;">VOUS</span>' if is_me else ''
+            st.markdown(f'<div style="{row_s}"><div style="font-weight:600;font-size:0.85rem;color:{text_main};">{info["nom"]}{me_badge}</div><div style="font-size:0.75rem;color:{text_sub};font-family:monospace;">{email}</div></div>', unsafe_allow_html=True)
+          with cb:
+            st.markdown(f'<div style="{row_s}"><span style="background:{rb};color:{rc};padding:3px 10px;border-radius:12px;font-size:0.75rem;font-weight:700;">{ri} {info["role"]}</span></div>', unsafe_allow_html=True)
+          with cc:
+            status = "🟡 Connecté" if is_me else "🟢 Actif"
+            st.markdown(f'<div style="{row_s}font-size:0.82rem;color:{text_sub};">{status}</div>', unsafe_allow_html=True)
+          with cd:
+            if is_superadmin:
+              btn_css = "" if dark else """<style>
+              div[data-testid^="stButton"] button,
+              section button[kind="secondary"],
+              .element-container button {
+                  background-color: #1a56a0 !important;
+                  background: #1a56a0 !important;
+                  color: #ffffff !important;
+                  fill: #ffffff !important;
+                  border: none !important;
+                  font-weight: 600 !important;
+              }
+              div[data-testid^="stButton"] button *,
+              .element-container button * {
+                  color: #ffffff !important;
+                  fill: #ffffff !important;
+                  -webkit-text-fill-color: #ffffff !important;
+              }
+              </style>"""
+              st.markdown(btn_css, unsafe_allow_html=True)
+              if st.button("Modifier MDP", key=f"chpwd_{email}", help=f"Changer MDP de {email}"):
+                st.session_state[f"show_chpwd_{email}"] = True
+            else:
+              st.markdown(f'<div style="text-align:center;color:{text_sub};padding:8px 0;font-size:0.8rem;">🔒</div>', unsafe_allow_html=True)
+          with ce:
+            if is_me:
+              st.markdown(f'<div style="text-align:center;color:{text_sub};padding:8px 0;">—</div>', unsafe_allow_html=True)
+            elif is_superadmin:
+              if st.button("Supprimer", key=f"del_btn_{email}", help=f"Supprimer {email}"):
+                st.session_state[f"confirm_del_{email}"] = True
+            else:
+              st.markdown(f'<div style="text-align:center;color:{text_sub};padding:8px 0;font-size:0.8rem;">🔒</div>', unsafe_allow_html=True)
+
+          if st.session_state.get(f"confirm_del_{email}"):
+            st.markdown(f'<div style="background:{"#2d1515" if dark else "#fef2f2"};border:2px solid #fca5a5;border-radius:8px;padding:10px 14px;margin:4px 0 8px;">⚠️ <b style="color:#dc2626;">Confirmer la suppression de <code>{email}</code> ?</b></div>', unsafe_allow_html=True)
+            cc1, cc2 = st.columns(2)
+            with cc1:
+              if st.button("Confirmer", key=f"confirm_yes_{email}", type="primary"):
+                delete_account(email)
+                st.session_state.pop(f"confirm_del_{email}", None)
+                st.success(f"Compte {email} supprimé.")
+                st.rerun()
+            with cc2:
+              if st.button("Annuler", key=f"confirm_no_{email}"):
+                st.session_state.pop(f"confirm_del_{email}", None)
+                st.rerun()
+
+          if st.session_state.get(f"show_chpwd_{email}"):
+            with st.form(key=f"form_chpwd_{email}"):
+              st.markdown(f"**Changer le mot de passe de {info['nom']}**")
+              old_p = st.text_input("Ancien mot de passe", type="password", key=f"op_{email}")
+              new_p = st.text_input("Nouveau mot de passe", type="password", key=f"np_{email}")
+              conf_p = st.text_input("Confirmer le nouveau mot de passe", type="password", key=f"cp_{email}")
+              s1, s2 = st.columns(2)
+              save_p  = s1.form_submit_button("Enregistrer", type="primary")
+              cancel_p = s2.form_submit_button("Annuler", type="secondary")
+            if save_p:
+              from modules.login import load_accounts as _la, save_accounts as _sa, check_password as _chk
+              if not _chk(email, old_p):
+                st.error("❌ Ancien mot de passe incorrect.")
+              elif len(new_p) < 8:
+                st.error("❌ Minimum 8 caractères.")
+              elif new_p != conf_p:
+                st.error("❌ Les mots de passe ne correspondent pas.")
+              else:
+                _acc = _la()
+                _acc[email]["hash"] = hashlib.sha256(new_p.encode()).hexdigest()
+                _sa(_acc)
+                st.session_state.pop(f"show_chpwd_{email}", None)
+                st.success(f"Mot de passe de {info['nom']} modifié.")
+                st.rerun()
+            if cancel_p:
+              st.session_state.pop(f"show_chpwd_{email}", None)
+              st.rerun()
+
+        st.markdown("---")
+        import pandas as _pd
+        acc_df = _pd.DataFrame([{"Nom": v['nom'], "Email": e, "Rôle": v['role']} for e, v in accounts.items()])
+        _buf = _io.BytesIO()
+        with _pd.ExcelWriter(_buf, engine='openpyxl') as _w:
+          acc_df.to_excel(_w, index=False, sheet_name='Comptes')
+        ec1, ec2 = st.columns(2)
+        with ec1:
+          st.download_button("Exporter en Excel", data=_buf.getvalue(),
+                    file_name="comptes_acces_ENSA.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="btn_export_accounts_xlsx", use_container_width=True)
+        with ec2:
+          _csv = acc_df.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+          st.download_button("Exporter en CSV", data=_csv,
+                    file_name="comptes_acces_ENSA.csv", mime="text/csv",
+                    key="btn_export_accounts_csv", use_container_width=True)
+
+      with sub2:
+        if not is_superadmin:
+          st.markdown('<div style="background:#fef2f2;border:2px solid #fca5a5;border-radius:10px;padding:14px 16px;text-align:center;"><div style="font-size:1.5rem;">🔒</div><b style="color:#dc2626;">Accès refusé</b><div style="color:#7f1d1d;font-size:0.82rem;margin-top:4px;">Seul le Super Administrateur peut créer des comptes.</div></div>', unsafe_allow_html=True)
+        else:
+          with st.form("add_account_form"):
+            col_n1, col_n2 = st.columns(2)
+            with col_n1:
+              new_nom  = st.text_input("Nom complet *",   placeholder="Pr. ALAMI Youssef")
+              new_email = st.text_input("Email @uca.ac.ma *", placeholder="y.alami@uca.ac.ma")
+            with col_n2:
+              new_role = st.selectbox("Rôle *", ["Professeur","Secrétaire","Administration","Responsable Bibliothèque"])
+              new_pwd = st.text_input("Mot de passe *", type="password")
+              conf_pwd = st.text_input("Confirmer *",  type="password")
+            add_btn = st.form_submit_button("Créer le compte", type="primary")
+
+          if add_btn:
+            errs = []
+            email_lower = new_email.strip().lower()
+            if not new_nom.strip():                  errs.append("Nom obligatoire.")
+            if not email_lower.endswith("@uca.ac.ma"):       errs.append("Email doit se terminer par @uca.ac.ma.")
+            if email_lower in accounts:               errs.append("Ce compte existe déjà.")
+            # Admin peut créer un compte sans liste autorisée
+            # (la vérification liste autorisée est seulement pour l'auto-inscription)
+            if len(new_pwd) < 8:                   errs.append("Minimum 8 caractères.")
+            if new_pwd != conf_pwd:                  errs.append("Mots de passe différents.")
+            if errs:
+              for e in errs: st.error(f"❌ {e}")
+            else:
+              add_account(email_lower, new_pwd, new_role, new_nom.strip())
+              st.success(f"Compte créé — {new_nom} ({new_email}) — {new_role}")
+              st.rerun()
