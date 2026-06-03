@@ -159,8 +159,10 @@ def show_dashboard_page():
   if HAS_AUTOREFRESH and not _chk:
     st_autorefresh(interval=10000, key="global_refresh")
 
-  # ── Load data ─────────────────────────────────────────────────────────────
+  # ── Load data — toujours recharger depuis Supabase ────────────────────────
   df = load_data()
+  # Forcer la mise à jour du session_state pour tous les rôles
+  st.session_state["df_last_load"] = pd.Timestamp.now().isoformat()
 
   # ── KPI METRICS ─────────────────────────────────────────────────────────
   total_etudiants = len(df)
@@ -257,8 +259,10 @@ def show_dashboard_page():
   # =====================================================================
   with tab1:
     st.session_state["active_tab"] = "liste"
-    if st.button("Rafraichir la liste", key="btn_refresh_liste"):
-      st.rerun()
+    _col_title, _col_refresh = st.columns([8, 2])
+    with _col_refresh:
+      if st.button("Rafraichir", key="btn_refresh_liste", use_container_width=True):
+        st.rerun()
 
     if df.empty:
       st.info("Aucun rapport soumis pour le moment.")
@@ -386,7 +390,8 @@ def show_dashboard_page():
             row_bg = ("#161b2e" if i%2==0 else "#1e2130") if dark else ("#f8fafc" if i%2==0 else "#ffffff")
             intitule_short = str(row['intitule_rapport'])[:50] + ("…" if len(str(row['intitule_rapport']))>50 else "")
             pdf_path = get_pdf_path(str(row['pdf_filename']))
-            num_ordre_key = str(row['num_ordre'])
+            num_ordre_key = f"{i}_{str(row['num_ordre']).replace('.', '_').replace(' ', '_')}"
+
             c1,c2,c3,c4,c5 = st.columns([2,2,1,1,1.5])
             row_style = f"background:{row_bg};padding:8px 10px;border-bottom:0.5px solid {border_c};"
             with c1: st.markdown(f'<div style="{row_style}font-size:0.84rem;font-weight:600;color:{text_main};">#{row["num_ordre"]} — {row["nom"]} {row["prenom"]}</div>', unsafe_allow_html=True)
@@ -425,30 +430,21 @@ def show_dashboard_page():
             show_prev = st.session_state.get(f"show_preview_{num_ordre_key}")
             if show_prev:
               from utils.data_manager import get_pdf_url, _use_supabase
-              import base64 as _b64
               nom_etud = f"{row['nom']} {row['prenom']}"
               pdf_filename = str(row.get('pdf_filename', ''))
-              pdf_src = None
-
-              if _use_supabase() and pdf_filename:
-                pdf_src = get_pdf_url(pdf_filename)
-              elif os.path.exists(pdf_path):
-                with open(pdf_path, "rb") as _pf2:
-                  pdf_b64 = _b64.b64encode(_pf2.read()).decode()
-                pdf_src = f"data:application/pdf;base64,{pdf_b64}"
-
-              if pdf_src:
+              pdf_url = get_pdf_url(pdf_filename) if (_use_supabase() and pdf_filename) else None
+              if pdf_url:
                 st.markdown(
                   f'''<div style="background:{row_bg};padding:10px 14px;border-bottom:2px solid #2563eb;margin-bottom:4px;">
                   <div style="font-size:0.78rem;font-weight:600;color:#2563eb;margin-bottom:6px;">
                     Rapport de {nom_etud} — {row["filiere"]} {row["annee"]}
                   </div>
-                  <iframe src="{pdf_src}"
+                  <iframe src="{pdf_url}"
                     width="100%" height="650px"
                     style="border:1.5px solid #cbd5e1;border-radius:8px;background:#fff;">
                   </iframe>
                   <p style="font-size:0.75rem;color:#64748b;margin-top:6px;">
-                    Si le PDF ne s'affiche pas, utilisez le bouton ⬇ PDF pour le télécharger.
+                    Si le PDF ne s'affiche pas, utilisez le bouton PDF pour le télécharger.
                   </p>
                   </div>''',
                   unsafe_allow_html=True
@@ -683,6 +679,9 @@ document.getElementById('pdf_input').addEventListener('change', function(e) {{
       statusEl.innerHTML = '<span style="color:#15803d;font-weight:600;">PDF uploadé avec succès ! Cliquez Mettre à jour</span>';
       zone.style.borderColor = '#86efac';
       zone.style.background = '#f0fdf4';
+      // Notifier Streamlit via l'input caché
+      const inputs = window.parent.document.querySelectorAll('input[type=text]');
+      inputs.forEach(inp => {{ if(inp.value === '') {{ inp.value = 'ok'; inp.dispatchEvent(new Event('input', {{bubbles:true}})); }} }});
     }} else {{
       statusEl.innerHTML = '<span style="color:#dc2626;">Erreur ' + xhr.status + ': ' + xhr.responseText + '</span>';
     }}
@@ -702,9 +701,13 @@ document.getElementById('pdf_input').addEventListener('change', function(e) {{
 }});
 </script>
 """, height=160)
-            # Sauvegarder le nom du fichier pour le bouton Mettre à jour
-            if f"pdf_uploaded_{selected_num}" not in st.session_state:
+            # Le nom du fichier est sauvegardé SEULEMENT si l'upload a réussi
+            # via le champ caché mis à jour par le JS
+            _confirm_key = f"pdf_confirm_{selected_num}"
+            _confirm_val = st.text_input("", value="", key=_confirm_key, label_visibility="collapsed")
+            if _confirm_val == "ok":
               st.session_state[f"pdf_uploaded_{selected_num}"] = _safe_name
+              st.success("PDF prêt — cliquez Mettre à jour")
 
         if submitted:
           updates = {
