@@ -133,8 +133,7 @@ def add_student(data: dict, pdf_file=None) -> dict:
 
     pdf_filename = ""
     if pdf_file is not None:
-        safe = f"{data['num_ordre']}_{data['nom']}_{data['prenom']}_{data['annee']}.pdf"
-        safe = safe.replace(" ", "_").replace("/", "-")
+        safe = f"{data['num_ordre']}.pdf"
         if hasattr(pdf_file, "getbuffer"):
             pdf_bytes = bytes(pdf_file.getbuffer())
         elif hasattr(pdf_file, "read"):
