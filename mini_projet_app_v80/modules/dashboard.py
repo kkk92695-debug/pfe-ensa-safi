@@ -433,15 +433,16 @@ def show_dashboard_page():
               if pdf_url:
                 st.markdown(
                   f'''<div style="background:{row_bg};padding:10px 14px;border-bottom:2px solid #2563eb;margin-bottom:4px;">
-                  <div style="font-size:0.78rem;font-weight:600;color:#2563eb;margin-bottom:6px;">
+                  <div style="font-size:0.78rem;font-weight:600;color:#2563eb;margin-bottom:10px;">
                     Rapport de {nom_etud} — {row["filiere"]} {row["annee"]}
                   </div>
-                  <iframe src="{pdf_url}"
-                    width="100%" height="650px"
-                    style="border:1.5px solid #cbd5e1;border-radius:8px;background:#fff;">
-                  </iframe>
+                  <a href="{pdf_url}" target="_blank"
+                    style="display:inline-block;background:#1d4ed8;color:white;padding:10px 24px;
+                    border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;margin-bottom:8px;">
+                    Ouvrir le PDF dans un nouvel onglet
+                  </a>
                   <p style="font-size:0.75rem;color:#64748b;margin-top:6px;">
-                    Si le PDF ne s'affiche pas, utilisez le bouton PDF pour le télécharger.
+                    Le PDF s'ouvre dans un nouvel onglet — pas de blocage Chrome.
                   </p>
                   </div>''',
                   unsafe_allow_html=True
