@@ -608,12 +608,12 @@ def show_dashboard_page():
         # ── Section PDF EN DEHORS du form ─────────────────────────────────────
         st.markdown("---")
         replace_pdf = pdf_exists == False  # True si pas de PDF
+        _safe_name = f"{selected_num}.pdf"  # Toujours défini
         if pdf_exists:
           replace_pdf = st.checkbox("Remplacer le PDF existant par un nouveau", key="chk_replace_pdf")
 
         if replace_pdf:
             from utils.data_manager import _get_supabase_url, _get_supabase_key, STORAGE_BUCKET
-            _safe_name = f"{selected_num}.pdf"
             _upload_url = f"{_get_supabase_url()}/storage/v1/object/{STORAGE_BUCKET}/{_safe_name}"
             _anon_key = _get_supabase_key()
 
@@ -683,11 +683,12 @@ document.getElementById('pdf_input').addEventListener('change', function(e) {{
 }});
 </script>
 """, height=160)
-            # Marquer le PDF comme prêt automatiquement
+            # PDF sera marqué prêt seulement après upload réussi via JS
             _up_key = f"pdf_uploaded_{selected_num}"
-            st.session_state[_up_key] = _safe_name
             if _up_key in st.session_state:
               st.success("PDF prêt — cliquez Mettre à jour")
+            else:
+              st.info("Choisissez le PDF ci-dessus, puis cliquez Mettre à jour")
 
         if submitted:
           updates = {
@@ -702,10 +703,20 @@ document.getElementById('pdf_input').addEventListener('change', function(e) {{
             'email': new_email.strip(),
             'filiere': new_filiere,
           }
-          # Ajouter le PDF si uploadé via JS
-          _up_key = f"pdf_uploaded_{selected_num}"
-          if _up_key in st.session_state:
-            updates['pdf_filename'] = st.session_state.pop(_up_key)
+          # Vérifier si le PDF existe dans Supabase Storage
+          if replace_pdf and _safe_name:
+            try:
+              import requests as _req2
+              from utils.data_manager import _get_supabase_url, _get_supabase_key, STORAGE_BUCKET
+              _check_url = f"{_get_supabase_url()}/storage/v1/object/public/{STORAGE_BUCKET}/{_safe_name}"
+              _r = _req2.head(_check_url, timeout=5)
+              if _r.status_code == 200:
+                updates['pdf_filename'] = _safe_name
+                st.session_state.pop(f"pdf_uploaded_{selected_num}", None)
+              else:
+                st.warning("PDF non trouvé dans Storage — uploadez d'abord le PDF")
+            except Exception:
+              pass
           update_student(selected_num, updates)
           st.success("Etudiant mis à jour ! Visible chez tous dans 5 secondes.")
           st.rerun()
