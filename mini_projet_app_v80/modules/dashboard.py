@@ -707,13 +707,14 @@ document.getElementById('pdf_input').addEventListener('change', function(e) {{
 }});
 </script>
 """, height=160)
-            # Le nom du fichier est sauvegardé SEULEMENT si l'upload a réussi
-            # via le champ caché mis à jour par le JS
-            _confirm_key = f"pdf_confirm_{selected_num}"
-            _confirm_val = st.text_input("", value="", key=_confirm_key, label_visibility="collapsed")
-            if _confirm_val == "ok":
-              st.session_state[f"pdf_uploaded_{selected_num}"] = _safe_name
-              st.success("PDF prêt — cliquez Mettre à jour")
+            # Bouton de confirmation après upload JS réussi
+            _up_key = f"pdf_uploaded_{selected_num}"
+            if _up_key in st.session_state:
+              st.success(f"PDF prêt — cliquez Mettre à jour")
+            else:
+              if st.button("PDF uploadé ? Cliquer ici pour confirmer", key=f"btn_confirm_pdf_{selected_num}", use_container_width=True):
+                st.session_state[_up_key] = _safe_name
+                st.rerun()
 
         if submitted:
           updates = {
@@ -764,7 +765,7 @@ document.getElementById('pdf_input').addEventListener('change', function(e) {{
 
       # Afficher message succès
       if st.session_state.pop("add_success", False):
-        st.success("Etudiant ajouté avec succès !")
+        st.success("Etudiant ajouté ! Allez dans Liste et cliquez Rafraichir pour le voir.")
 
       m_col1, m_col2 = st.columns(2)
       with m_col1:
@@ -802,7 +803,7 @@ document.getElementById('pdf_input').addEventListener('change', function(e) {{
             'date_depot_secretariat': _dt.now().strftime("%Y-%m-%d %H:%M"),
             'correction': 'Non', 'nb_copies_bibliotheque': 0
           }, m_pdf)
-          st.success("Étudiant ajouté avec succès !")
+          st.success("Etudiant ajouté ! Allez dans Liste et cliquez Rafraichir pour le voir.")
           # Vider les champs du formulaire
           for _k in ["m_nom", "m_prenom", "m_email", "m_intitule", "m_encadrant", "m_co_enc", "m_lieu", "m_pdf_upload"]:
             if _k in st.session_state:
