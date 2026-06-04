@@ -705,18 +705,7 @@ document.getElementById('pdf_input').addEventListener('change', function(e) {{
           }
           # Vérifier si le PDF existe dans Supabase Storage
           if replace_pdf and _safe_name:
-            try:
-              import requests as _req2
-              from utils.data_manager import _get_supabase_url, _get_supabase_key, STORAGE_BUCKET
-              _check_url = f"{_get_supabase_url()}/storage/v1/object/public/{STORAGE_BUCKET}/{_safe_name}"
-              _r = _req2.head(_check_url, timeout=5)
-              if _r.status_code == 200:
-                updates['pdf_filename'] = _safe_name
-                st.session_state.pop(f"pdf_uploaded_{selected_num}", None)
-              else:
-                st.warning("PDF non trouvé dans Storage — uploadez d'abord le PDF")
-            except Exception:
-              pass
+            updates['pdf_filename'] = _safe_name
           update_student(selected_num, updates)
           st.success("Etudiant mis à jour ! Visible chez tous dans 5 secondes.")
           st.rerun()
