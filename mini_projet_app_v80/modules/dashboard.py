@@ -406,49 +406,16 @@ def show_dashboard_page():
               elif os.path.exists(pdf_path):
                 pdf_available = True
               if pdf_available:
-                cb1, cb2 = st.columns(2)
-                with cb1:
-                  preview_key = f"show_preview_{num_ordre_key}"
-                  label_preview = "Fermer" if st.session_state.get(preview_key) else "Lire"
-                  if st.button(label_preview, key=f"prev_btn_{num_ordre_key}", use_container_width=True):
-                    st.session_state[preview_key] = not st.session_state.get(preview_key, False)
-                    st.rerun()
-                with cb2:
-                  if pdf_url:
-                    st.markdown(f'<a href="{pdf_url}" target="_blank" download style="display:block;text-align:center;background:#1d4ed8;color:white;padding:6px;border-radius:6px;font-size:0.78rem;text-decoration:none;">⬇ PDF</a>', unsafe_allow_html=True)
-                  elif os.path.exists(pdf_path):
-                    with open(pdf_path, "rb") as _pf:
-                      st.download_button("PDF", data=_pf.read(), file_name=str(row['pdf_filename']),
-                                mime="application/pdf", key=f"dl_{num_ordre_key}", use_container_width=True)
+                if pdf_url:
+                  st.markdown(
+                    f'<a href="{pdf_url}" target="_blank" style="display:block;text-align:center;background:#1d4ed8;color:white;padding:6px;border-radius:6px;font-size:0.78rem;text-decoration:none;font-weight:600;">Voir</a>',
+                    unsafe_allow_html=True)
+                elif os.path.exists(pdf_path):
+                  with open(pdf_path, "rb") as _pf:
+                    st.download_button("Voir", data=_pf.read(), file_name=str(row['pdf_filename']),
+                              mime="application/pdf", key=f"dl_{num_ordre_key}", use_container_width=True)
               else:
                 st.markdown('<div style="text-align:center;font-size:0.75rem;color:#9ca3af;padding:8px 0;">Non trouvé</div>', unsafe_allow_html=True)
-
-            # ── Prévisualisation inline (sous la ligne) ──────────────────
-            show_prev = st.session_state.get(f"show_preview_{num_ordre_key}")
-            if show_prev:
-              from utils.data_manager import get_pdf_url, _use_supabase
-              nom_etud = f"{row['nom']} {row['prenom']}"
-              pdf_filename = str(row.get('pdf_filename', ''))
-              pdf_url = get_pdf_url(pdf_filename) if (_use_supabase() and pdf_filename) else None
-              if pdf_url:
-                st.markdown(
-                  f'''<div style="background:{row_bg};padding:10px 14px;border-bottom:2px solid #2563eb;margin-bottom:4px;">
-                  <div style="font-size:0.78rem;font-weight:600;color:#2563eb;margin-bottom:10px;">
-                    Rapport de {nom_etud} — {row["filiere"]} {row["annee"]}
-                  </div>
-                  <a href="{pdf_url}" target="_blank"
-                    style="display:inline-block;background:#1d4ed8;color:white;padding:10px 24px;
-                    border-radius:8px;font-size:14px;font-weight:600;text-decoration:none;margin-bottom:8px;">
-                    Ouvrir le PDF dans un nouvel onglet
-                  </a>
-                  <p style="font-size:0.75rem;color:#64748b;margin-top:6px;">
-                    Le PDF s'ouvre dans un nouvel onglet — pas de blocage Chrome.
-                  </p>
-                  </div>''',
-                  unsafe_allow_html=True
-                )
-              else:
-                st.info("PDF non disponible pour cet étudiant.")
 
   # =====================================================================
   # TAB 2 : IMPORT / EXPORT
