@@ -544,6 +544,14 @@ def show_dashboard_page():
         selected_label = st.selectbox("Choisir un étudiant", options_labels, key="gest_select_etudiant")
         selected_num  = options_nums[options_labels.index(selected_label)]
 
+        # Détecter changement d'étudiant et vider le form
+        if st.session_state.get("last_selected_num") != str(selected_num):
+          st.session_state["last_selected_num"] = str(selected_num)
+          # Vider les clés du form pour forcer le rechargement
+          for _k in list(st.session_state.keys()):
+            if _k.startswith("pdf_uploaded_") or _k.startswith("pdf_confirm_") or _k == "chk_replace_pdf":
+              del st.session_state[_k]
+
         student_rows = df[df['num_ordre'].astype(str) == str(selected_num)]
         if student_rows.empty:
           st.warning("Étudiant introuvable. Rafraîchissez la page.")
@@ -675,14 +683,11 @@ document.getElementById('pdf_input').addEventListener('change', function(e) {{
 }});
 </script>
 """, height=160)
-            # Bouton de confirmation après upload JS réussi
+            # Marquer le PDF comme prêt automatiquement
             _up_key = f"pdf_uploaded_{selected_num}"
+            st.session_state[_up_key] = _safe_name
             if _up_key in st.session_state:
-              st.success(f"PDF prêt — cliquez Mettre à jour")
-            else:
-              if st.button("PDF uploadé ? Cliquer ici pour confirmer", key=f"btn_confirm_pdf_{selected_num}", use_container_width=True):
-                st.session_state[_up_key] = _safe_name
-                st.rerun()
+              st.success("PDF prêt — cliquez Mettre à jour")
 
         if submitted:
           updates = {
